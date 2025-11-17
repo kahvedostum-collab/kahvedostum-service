@@ -1,0 +1,17 @@
+# Rider / IDE
+.idea/
+*.user
+*.DotSettings.user
+
+# Build output
+bin/
+obj/
+
+# VS /.NET stuff
+*.log
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Docker
+*.tar
