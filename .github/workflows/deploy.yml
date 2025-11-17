@@ -36,6 +36,6 @@ jobs:
             docker build -t kahvedostum-service .
 
             echo ">>> Run new container"
-            docker run -d -p 5000:8080 --name kahvedostum-service kahvedostum-service
+            docker run -d -p 5050:8080 --name kahvedostum-service kahvedostum-service
 
             echo ">>> Service deployment completed"

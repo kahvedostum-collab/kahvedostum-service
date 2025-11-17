@@ -1,40 +1,21 @@
+using KahveDostum_Service.Extensions;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Swagger için gerekli servisler
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+// Controller + Swagger servisleri
+builder.Services.AddControllers();
+builder.Services.AddSwaggerDocumentation();
 
 var app = builder.Build();
 
-// Swagger middleware (geliştirirken hep açık kalsın istersen if'e bile gerek yok)
-app.UseSwagger();
-app.UseSwaggerUI();
-
 app.UseHttpsRedirection();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild",
-    "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+app.UseAuthorization();
 
-app.MapGet("/weatherforecast", () =>
-    {
-        var forecast = Enumerable.Range(1, 5).Select(index =>
-                new WeatherForecast
-                (
-                    DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-                    Random.Shared.Next(-20, 55),
-                    summaries[Random.Shared.Next(summaries.Length)]
-                ))
-            .ToArray();
-        return forecast;
-    })
-    .WithName("GetWeatherForecast"); // DİKKAT: Burada artık .WithOpenApi() YOK
+// Swagger middleware (detayı extension'da)
+app.UseSwaggerDocumentation();
+
+// Controller endpoint'lerini haritala
+app.MapControllers();
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
