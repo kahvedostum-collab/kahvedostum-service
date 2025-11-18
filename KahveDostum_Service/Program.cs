@@ -8,6 +8,7 @@ using KahveDostum_Service.Extensions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // DbContext
@@ -56,12 +57,11 @@ builder.Services.AddSwaggerDocumentation();
 
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwaggerDocumentation();
-}
+// Swagger'ı her ortamda aç (Prod + Docker dahil)
+app.UseSwaggerDocumentation();
 
-app.UseHttpsRedirection();
+// Container sadece HTTP'de çalıştığı için HTTPS redirect kapatıldı
+// app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
