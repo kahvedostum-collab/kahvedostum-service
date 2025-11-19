@@ -10,7 +10,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
     public DbSet<FriendRequest> FriendRequests => Set<FriendRequest>(); 
     public DbSet<Friendship> Friendships => Set<Friendship>();         
-
+    public DbSet<Conversation> Conversations => Set<Conversation>();
+    public DbSet<ConversationParticipant> ConversationParticipants => Set<ConversationParticipant>();
+    public DbSet<Message> Messages => Set<Message>();
+    public DbSet<MessageReceipt> MessageReceipts => Set<MessageReceipt>();
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -56,6 +59,53 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                   .OnDelete(DeleteBehavior.NoAction);
 
             entity.HasIndex(f => new { f.UserId, f.FriendUserId }).IsUnique();
+        });
+        // ConversationParticipant
+        modelBuilder.Entity<ConversationParticipant>(entity =>
+        {
+            entity.HasOne(cp => cp.Conversation)
+                .WithMany(c => c.Participants)
+                .HasForeignKey(cp => cp.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(cp => cp.User)
+                .WithMany()
+                .HasForeignKey(cp => cp.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(cp => new { cp.ConversationId, cp.UserId }).IsUnique();
+        });
+
+        // Message
+        modelBuilder.Entity<Message>(entity =>
+        {
+            entity.HasOne(m => m.Conversation)
+                .WithMany(c => c.Messages)
+                .HasForeignKey(m => m.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(m => m.Sender)
+                .WithMany()
+                .HasForeignKey(m => m.SenderId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            entity.HasIndex(m => new { m.ConversationId, m.CreatedAt });
+        });
+
+        // MessageReceipt
+        modelBuilder.Entity<MessageReceipt>(entity =>
+        {
+            entity.HasOne(r => r.Message)
+                .WithMany(m => m.Receipts)
+                .HasForeignKey(r => r.MessageId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(r => r.User)
+                .WithMany()
+                .HasForeignKey(r => r.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(r => new { r.MessageId, r.UserId }).IsUnique();
         });
     }
 }
