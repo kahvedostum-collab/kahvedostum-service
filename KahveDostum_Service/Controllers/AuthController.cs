@@ -24,7 +24,7 @@ public class AuthController(IAuthService authService) : ControllerBase
             return BadRequest(new { message = ex.Message });
         }
     }
-    
+    //login
     [HttpPost("Login")]
     public async Task<IActionResult> Login([FromBody] LoginRequestDto request)
     {
