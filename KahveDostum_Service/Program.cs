@@ -11,11 +11,31 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ---------------------------
+// CORS
+// ---------------------------
+// Her origin'e izin ver, credentials ile birlikte
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy
+            .SetIsOriginAllowed(_ => true) // tüm origin'lere izin ver
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
+
+// ---------------------------
 // DbContext
+// ---------------------------
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// ---------------------------
 // JWT
+// ---------------------------
 var jwtSection = builder.Configuration.GetSection("Jwt");
 var key = Encoding.UTF8.GetBytes(jwtSection["Key"]!);
 
@@ -42,29 +62,49 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
+// ---------------------------
 // Repositories + UoW
+// ---------------------------
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
-builder.Services.AddScoped<IFriendRequestRepository, FriendRequestRepository>(); 
-builder.Services.AddScoped<IFriendshipRepository, FriendshipRepository>();   
+
+builder.Services.AddScoped<IFriendRequestRepository, FriendRequestRepository>();
+builder.Services.AddScoped<IFriendshipRepository, FriendshipRepository>();
+
+builder.Services.AddScoped<IConversationRepository, ConversationRepository>();
+builder.Services.AddScoped<IMessageRepository, MessageRepository>();
+builder.Services.AddScoped<IMessageReceiptRepository, MessageReceiptRepository>();
+
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
+// ---------------------------
 // Services
+// ---------------------------
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<IFriendService, FriendService>(); 
+builder.Services.AddScoped<IFriendService, FriendService>();
+builder.Services.AddScoped<IMessageService, MessageService>();
 
+// ---------------------------
 // Controllers + Swagger
+// ---------------------------
 builder.Services.AddControllers();
 builder.Services.AddSwaggerDocumentation();
 
 var app = builder.Build();
 
-// Swagger'ı her ortamda aç (Prod + Docker dahil)
+// ---------------------------
+// Middleware Pipeline
+// ---------------------------
 app.UseSwaggerDocumentation();
 
-// Container sadece HTTP'de çalıştığı için HTTPS redirect kapatıldı
+// HTTPS REDIRECT kapalı (container için gerekli)
 // app.UseHttpsRedirection();
+
+app.UseRouting();
+
+// CORS mutlaka routing'den sonra ve auth'den önce olmalı
+app.UseCors("AllowAll");
 
 app.UseAuthentication();
 app.UseAuthorization();

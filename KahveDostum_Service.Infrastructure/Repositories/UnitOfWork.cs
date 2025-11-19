@@ -3,12 +3,16 @@ using KahveDostum_Service.Infrastructure.Data;
 
 namespace KahveDostum_Service.Infrastructure.Repositories;
 
+
 public class UnitOfWork(
     AppDbContext context,
     IUserRepository userRepository,
     IRefreshTokenRepository refreshTokenRepository,
     IFriendRequestRepository friendRequestRepository,
-    IFriendshipRepository friendshipRepository
+    IFriendshipRepository friendshipRepository,
+    IConversationRepository conversationRepository,
+    IMessageRepository messageRepository,
+    IMessageReceiptRepository messageReceiptRepository
 ) : IUnitOfWork
 {
     private readonly AppDbContext _context = context;
@@ -18,6 +22,9 @@ public class UnitOfWork(
 
     public IFriendRequestRepository FriendRequests { get; } = friendRequestRepository;
     public IFriendshipRepository Friendships { get; } = friendshipRepository;
+    public IConversationRepository Conversations { get; } = conversationRepository;
+    public IMessageRepository Messages { get; } = messageRepository;
+    public IMessageReceiptRepository MessageReceipts { get; } = messageReceiptRepository;
 
     public Task<int> SaveChangesAsync() => _context.SaveChangesAsync();
 
