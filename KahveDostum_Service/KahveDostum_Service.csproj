@@ -18,7 +18,8 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\KahveDostum_Service.Application  \KahveDostum_Service.Application.csproj" />
+      <ProjectReference Include="..\KahveDostum_Service.Application\KahveDostum_Service.Application.csproj" />
+      <ProjectReference Include="..\KahveDostum_Service.Application\KahveDostum_Service.Application.csproj" />
       <ProjectReference Include="..\KahveDostum_Service.Infrastructure\KahveDostum_Service.Infrastructure.csproj" />
     </ItemGroup>
 
