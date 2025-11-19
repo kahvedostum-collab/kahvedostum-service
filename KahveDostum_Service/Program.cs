@@ -45,11 +45,14 @@ builder.Services.AddAuthorization();
 // Repositories + UoW
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+builder.Services.AddScoped<IFriendRequestRepository, FriendRequestRepository>(); 
+builder.Services.AddScoped<IFriendshipRepository, FriendshipRepository>();   
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
 // Services
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IFriendService, FriendService>(); 
 
 // Controllers + Swagger
 builder.Services.AddControllers();
