@@ -10,35 +10,37 @@ namespace KahveDostum_Service.Controllers;
 public class AuthController(IAuthService authService) : ControllerBase
 {
     private readonly IAuthService _authService = authService;
-    [Authorize]
+
     [HttpPost("Register")]
+    [AllowAnonymous]
     public async Task<IActionResult> Register([FromBody] RegisterRequestDto request)
     {
         try
         {
             var result = await _authService.RegisterAsync(request);
-            return Ok(result);
+            return Ok(ApiResponse<LoginResultDto>.SuccessResponse(result, "Kayıt başarılı."));
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return BadRequest(ApiResponse<object>.FailResponse(ex.Message, 400));
         }
     }
-    //login
+
     [HttpPost("Login")]
+    [AllowAnonymous]
     public async Task<IActionResult> Login([FromBody] LoginRequestDto request)
     {
         try
         {
             var result = await _authService.LoginAsync(request);
-            return Ok(result);
+            return Ok(ApiResponse<LoginResultDto>.SuccessResponse(result, "Giriş başarılı."));
         }
         catch (UnauthorizedAccessException ex)
         {
-            return Unauthorized(new { message = ex.Message });
+            return Unauthorized(ApiResponse<object>.FailResponse(ex.Message, 401));
         }
     }
-    
+
     [Authorize]
     [HttpPost("Refresh")]
     public async Task<IActionResult> Refresh([FromBody] RefreshRequestDto request)
@@ -46,11 +48,11 @@ public class AuthController(IAuthService authService) : ControllerBase
         try
         {
             var result = await _authService.RefreshAsync(request);
-            return Ok(result);
+            return Ok(ApiResponse<LoginResultDto>.SuccessResponse(result, "Token yenilendi."));
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(new { message = ex.Message });
+            return BadRequest(ApiResponse<object>.FailResponse(ex.Message, 400));
         }
     }
 }

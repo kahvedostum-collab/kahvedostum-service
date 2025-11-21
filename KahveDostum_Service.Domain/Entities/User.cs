@@ -9,6 +9,8 @@ public class User
 
     public byte[] PasswordHash { get; set; } = default!;
     public byte[] PasswordSalt { get; set; } = default!;
+    public string? PhotoUrl { get; set; }
+    public string? Bio { get; set; }
 
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

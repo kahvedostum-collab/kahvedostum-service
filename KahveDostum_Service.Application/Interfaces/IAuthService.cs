@@ -4,7 +4,7 @@ namespace KahveDostum_Service.Application.Interfaces;
 
 public interface IAuthService
 {
-    Task<AuthResponseDto> RegisterAsync(RegisterRequestDto request);
-    Task<AuthResponseDto> LoginAsync(LoginRequestDto request);
-    Task<AuthResponseDto> RefreshAsync(RefreshRequestDto request);
+    Task<LoginResultDto> RegisterAsync(RegisterRequestDto request);
+    Task<LoginResultDto> LoginAsync(LoginRequestDto request);
+    Task<LoginResultDto> RefreshAsync(RefreshRequestDto request);
 }

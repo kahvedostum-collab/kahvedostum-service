@@ -17,9 +17,8 @@ public class AuthService(
 {
     private readonly IUnitOfWork _uow = unitOfWork;
     private readonly ITokenService _tokenService = tokenService;
-    private readonly IConfiguration _configuration = configuration;
 
-    public async Task<AuthResponseDto> RegisterAsync(RegisterRequestDto request)
+    public async Task<LoginResultDto> RegisterAsync(RegisterRequestDto request)
     {
         var exists = await _uow.Users.ExistsByUserNameOrEmailAsync(request.UserName, request.Email);
         if (exists)
@@ -45,10 +44,14 @@ public class AuthService(
         await _uow.RefreshTokens.AddAsync(refreshToken);
         await _uow.SaveChangesAsync();
 
-        return BuildAuthResponse(accessToken, refreshToken.Token, refreshToken.ExpiresAt);
+        return new LoginResultDto
+        {
+            AccessToken = accessToken,
+            RefreshToken = refreshToken.Token
+        };
     }
 
-    public async Task<AuthResponseDto> LoginAsync(LoginRequestDto request)
+    public async Task<LoginResultDto> LoginAsync(LoginRequestDto request)
     {
         var user = await _uow.Users.GetByUserNameOrEmailAsync(request.UserNameOrEmail);
         if (user is null)
@@ -64,10 +67,15 @@ public class AuthService(
         await _uow.RefreshTokens.AddAsync(refreshToken);
         await _uow.SaveChangesAsync();
 
-        return BuildAuthResponse(accessToken, refreshToken.Token, refreshToken.ExpiresAt);
+        return new LoginResultDto
+        {
+            AccessToken = accessToken,
+            RefreshToken = refreshToken.Token
+        };
     }
 
-    public async Task<AuthResponseDto> RefreshAsync(RefreshRequestDto request)
+
+    public async Task<LoginResultDto> RefreshAsync(RefreshRequestDto request)
     {
         var principal = _tokenService.GetPrincipalFromExpiredToken(request.AccessToken);
         if (principal is null)
@@ -85,7 +93,7 @@ public class AuthService(
 
         var existingRefresh = await _uow.RefreshTokens.GetValidTokenAsync(user.Id, request.RefreshToken);
         if (existingRefresh is null)
-            throw new InvalidOperationException("Geçersiz veya süresi dolmuş refresh token.");
+            throw new InvalidOperationException("Geçersiz refresh token.");
 
         existingRefresh.IsRevoked = true;
         _uow.RefreshTokens.Update(existingRefresh);
@@ -97,19 +105,10 @@ public class AuthService(
         await _uow.RefreshTokens.AddAsync(newRefreshToken);
         await _uow.SaveChangesAsync();
 
-        return BuildAuthResponse(newAccessToken, newRefreshToken.Token, newRefreshToken.ExpiresAt);
-    }
-
-    private AuthResponseDto BuildAuthResponse(string accessToken, string refreshToken, DateTime refreshExpiresAt)
-    {
-        var minutes = int.Parse(_configuration["Jwt:AccessTokenMinutes"]! as string);
-
-        return new AuthResponseDto
+        return new LoginResultDto
         {
-            AccessToken = accessToken,
-            AccessTokenExpiresAt = DateTime.UtcNow.AddMinutes(minutes),
-            RefreshToken = refreshToken,
-            RefreshTokenExpiresAt = refreshExpiresAt
+            AccessToken = newAccessToken,
+            RefreshToken = newRefreshToken.Token
         };
     }
 

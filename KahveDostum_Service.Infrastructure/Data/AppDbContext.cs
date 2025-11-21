@@ -14,6 +14,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ConversationParticipant> ConversationParticipants => Set<ConversationParticipant>();
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<MessageReceipt> MessageReceipts => Set<MessageReceipt>();
+    public DbSet<UserSession> UserSessions => Set<UserSession>();
+    public DbSet<Cafe> Cafes => Set<Cafe>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -27,8 +30,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<RefreshToken>(entity =>
         {
             entity.HasOne(rt => rt.User)
-                  .WithMany(u => u.RefreshTokens)
-                  .HasForeignKey(rt => rt.UserId);
+                .WithMany(u => u.RefreshTokens)
+                .HasForeignKey(rt => rt.UserId);
         });
 
         modelBuilder.Entity<FriendRequest>(entity =>
@@ -49,16 +52,39 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<Friendship>(entity =>
         {
             entity.HasOne(f => f.User)
-                  .WithMany()
-                  .HasForeignKey(f => f.UserId)
-                  .OnDelete(DeleteBehavior.Cascade);
+                .WithMany()
+                .HasForeignKey(f => f.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasOne(f => f.FriendUser)
-                  .WithMany()
-                  .HasForeignKey(f => f.FriendUserId)
-                  .OnDelete(DeleteBehavior.NoAction);
+                .WithMany()
+                .HasForeignKey(f => f.FriendUserId)
+                .OnDelete(DeleteBehavior.NoAction);
 
             entity.HasIndex(f => new { f.UserId, f.FriendUserId }).IsUnique();
+        });
+
+        // USER SESSION
+        modelBuilder.Entity<UserSession>(entity =>
+        {
+            entity.HasOne(s => s.User)
+                .WithMany()
+                .HasForeignKey(s => s.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(s => s.Cafe)
+                .WithMany()
+                .HasForeignKey(s => s.CafeId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(s => new { s.UserId, s.CafeId, s.Status });
+        });
+
+        // CAFE
+        modelBuilder.Entity<Cafe>(entity =>
+        {
+            entity.Property(c => c.Name).IsRequired().HasMaxLength(200);
+            entity.Property(c => c.Address).IsRequired().HasMaxLength(500);
         });
         // ConversationParticipant
         modelBuilder.Entity<ConversationParticipant>(entity =>

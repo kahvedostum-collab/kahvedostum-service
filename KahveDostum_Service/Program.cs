@@ -14,16 +14,14 @@ var builder = WebApplication.CreateBuilder(args);
 // ---------------------------
 // CORS
 // ---------------------------
-// Her origin'e izin ver, credentials ile birlikte
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
     {
-        policy
-            .SetIsOriginAllowed(_ => true) // tüm origin'lere izin ver
-            .AllowAnyHeader()
-            .AllowAnyMethod()
-            .AllowCredentials();
+        policy.SetIsOriginAllowed(_ => true)
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
     });
 });
 
@@ -75,6 +73,10 @@ builder.Services.AddScoped<IConversationRepository, ConversationRepository>();
 builder.Services.AddScoped<IMessageRepository, MessageRepository>();
 builder.Services.AddScoped<IMessageReceiptRepository, MessageReceiptRepository>();
 
+//  🔥 EKSİK OLAN 2 REPOSITORY — ZORUNLU 🔥
+builder.Services.AddScoped<ICafeRepository, CafeRepository>();
+builder.Services.AddScoped<IUserSessionRepository, UserSessionRepository>();
+
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
 // ---------------------------
@@ -84,6 +86,8 @@ builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IFriendService, FriendService>();
 builder.Services.AddScoped<IMessageService, MessageService>();
+builder.Services.AddScoped<ICafeService, CafeService>();
+builder.Services.AddScoped<ISessionService, SessionService>();
 
 // ---------------------------
 // Controllers + Swagger
@@ -98,17 +102,10 @@ var app = builder.Build();
 // ---------------------------
 app.UseSwaggerDocumentation();
 
-// HTTPS REDIRECT kapalı (container için gerekli)
-// app.UseHttpsRedirection();
-
 app.UseRouting();
-
-// CORS mutlaka routing'den sonra ve auth'den önce olmalı
 app.UseCors("AllowAll");
-
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-
 app.Run();

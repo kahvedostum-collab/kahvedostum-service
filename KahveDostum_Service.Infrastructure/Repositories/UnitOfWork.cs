@@ -12,7 +12,9 @@ public class UnitOfWork(
     IFriendshipRepository friendshipRepository,
     IConversationRepository conversationRepository,
     IMessageRepository messageRepository,
-    IMessageReceiptRepository messageReceiptRepository
+    IMessageReceiptRepository messageReceiptRepository,
+    ICafeRepository cafeRepository,
+    IUserSessionRepository sessionRepository
 ) : IUnitOfWork
 {
     private readonly AppDbContext _context = context;
@@ -25,6 +27,9 @@ public class UnitOfWork(
     public IConversationRepository Conversations { get; } = conversationRepository;
     public IMessageRepository Messages { get; } = messageRepository;
     public IMessageReceiptRepository MessageReceipts { get; } = messageReceiptRepository;
+
+    public ICafeRepository Cafes { get; } = cafeRepository;
+    public IUserSessionRepository UserSessions { get; } = sessionRepository;
 
     public Task<int> SaveChangesAsync() => _context.SaveChangesAsync();
 
