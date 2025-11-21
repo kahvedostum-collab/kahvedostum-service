@@ -26,7 +26,8 @@ public class FriendsController(IFriendService friendService) : ControllerBase
     {
         var userId = GetCurrentUserId();
         await _friendService.SendFriendRequestAsync(userId, request);
-        return Ok(new { message = "Arkadaşlık isteği gönderildi." });
+
+        return Ok(ApiResponse<object>.SuccessResponse(null, "Arkadaşlık isteği gönderildi."));
     }
 
     [HttpPost("requests/{requestId:int}/cancel")]
@@ -34,7 +35,8 @@ public class FriendsController(IFriendService friendService) : ControllerBase
     {
         var userId = GetCurrentUserId();
         await _friendService.CancelFriendRequestAsync(userId, requestId);
-        return Ok(new { message = "Arkadaşlık isteği iptal edildi." });
+
+        return Ok(ApiResponse<object>.SuccessResponse(null, "Arkadaşlık isteği iptal edildi."));
     }
 
     [HttpPost("requests/{requestId:int}/respond")]
@@ -44,7 +46,9 @@ public class FriendsController(IFriendService friendService) : ControllerBase
     {
         var userId = GetCurrentUserId();
         await _friendService.RespondToFriendRequestAsync(userId, requestId, request.Accept);
-        return Ok(new { message = request.Accept ? "İstek kabul edildi." : "İstek reddedildi." });
+
+        return Ok(ApiResponse<object>.SuccessResponse(null,
+            request.Accept ? "İstek kabul edildi." : "İstek reddedildi."));
     }
 
     [HttpGet("requests/incoming")]
@@ -52,7 +56,9 @@ public class FriendsController(IFriendService friendService) : ControllerBase
     {
         var userId = GetCurrentUserId();
         var list = await _friendService.GetIncomingRequestsAsync(userId);
-        return Ok(list);
+
+        return Ok(ApiResponse<List<FriendRequestDto>>.SuccessResponse(list,
+            "Gelen arkadaşlık istekleri listelendi."));
     }
 
     [HttpGet("requests/outgoing")]
@@ -60,7 +66,9 @@ public class FriendsController(IFriendService friendService) : ControllerBase
     {
         var userId = GetCurrentUserId();
         var list = await _friendService.GetOutgoingRequestsAsync(userId);
-        return Ok(list);
+
+        return Ok(ApiResponse<List<FriendRequestDto>>.SuccessResponse(list,
+            "Giden arkadaşlık istekleri listelendi."));
     }
 
     [HttpGet]
@@ -68,7 +76,8 @@ public class FriendsController(IFriendService friendService) : ControllerBase
     {
         var userId = GetCurrentUserId();
         var list = await _friendService.GetFriendsAsync(userId);
-        return Ok(list);
+
+        return Ok(ApiResponse<List<FriendDto>>.SuccessResponse(list, "Arkadaş listesi getirildi."));
     }
 
     [HttpDelete("{friendUserId:int}")]
@@ -76,6 +85,7 @@ public class FriendsController(IFriendService friendService) : ControllerBase
     {
         var userId = GetCurrentUserId();
         await _friendService.RemoveFriendAsync(userId, friendUserId);
-        return Ok(new { message = "Arkadaşlıktan çıkarıldı." });
+
+        return Ok(ApiResponse<object>.SuccessResponse(null, "Arkadaşlıktan çıkarıldı."));
     }
 }
