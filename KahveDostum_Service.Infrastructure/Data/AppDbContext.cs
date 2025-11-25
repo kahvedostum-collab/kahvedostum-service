@@ -16,6 +16,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<MessageReceipt> MessageReceipts => Set<MessageReceipt>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
     public DbSet<Cafe> Cafes => Set<Cafe>();
+    public DbSet<Receipt> Receipts => Set<Receipt>();
+    public DbSet<ReceiptLine> ReceiptLines => Set<ReceiptLine>();
+
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -133,5 +136,54 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
             entity.HasIndex(r => new { r.MessageId, r.UserId }).IsUnique();
         });
+        // RECEIPT
+        modelBuilder.Entity<Receipt>(entity =>
+        {
+            entity.ToTable("Receipts");
+
+            entity.HasKey(r => r.Id);
+
+            entity.Property(r => r.Brand).HasMaxLength(255);
+            entity.Property(r => r.Date).HasMaxLength(50);
+            entity.Property(r => r.Time).HasMaxLength(50);
+            entity.Property(r => r.ReceiptNo).HasMaxLength(100);
+            entity.Property(r => r.Total).HasMaxLength(50);
+            entity.Property(r => r.City).HasMaxLength(100);
+            entity.Property(r => r.District).HasMaxLength(100);
+
+            entity.Property(r => r.CreatedAt)
+                .HasDefaultValueSql("GETUTCDATE()");
+
+            entity.HasOne(r => r.User)
+                .WithMany(u => u.Receipts)        
+                .HasForeignKey(r => r.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(r => r.Cafe)
+                .WithMany()                     
+                .HasForeignKey(r => r.CafeId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(r => new { r.UserId, r.CafeId, r.CreatedAt });
+        });
+
+        // RECEIPT LINE
+        modelBuilder.Entity<ReceiptLine>(entity =>
+        {
+            entity.ToTable("ReceiptLines");
+
+            entity.HasKey(rl => rl.Id);
+
+            entity.Property(rl => rl.Text).IsRequired();
+
+            entity.HasOne(rl => rl.Receipt)
+                .WithMany(r => r.Lines)
+                .HasForeignKey(rl => rl.ReceiptId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(rl => new { rl.ReceiptId, rl.LineIndex })
+                .IsUnique();
+        });
+
     }
 }
