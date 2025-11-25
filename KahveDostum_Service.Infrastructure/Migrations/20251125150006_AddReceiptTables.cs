@@ -11,15 +11,15 @@ namespace KahveDostum_Service.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "Bio",
-                table: "RefreshTokens");
+            // migrationBuilder.DropColumn(
+            //     name: "Bio",
+            //     table: "RefreshTokens");
 
-            migrationBuilder.AddColumn<string>(
-                name: "Bio",
-                table: "Users",
-                type: "nvarchar(max)",
-                nullable: true);
+            // migrationBuilder.AddColumn<string>(
+            //     name: "Bio",
+            //     table: "Users",
+            //     type: "nvarchar(max)",
+            //     nullable: true);
 
             migrationBuilder.CreateTable(
                 name: "Receipts",
@@ -106,15 +106,15 @@ namespace KahveDostum_Service.Infrastructure.Migrations
             migrationBuilder.DropTable(
                 name: "Receipts");
 
-            migrationBuilder.DropColumn(
-                name: "Bio",
-                table: "Users");
+            // migrationBuilder.DropColumn(
+            //     name: "Bio",
+            //     table: "Users");
 
-            migrationBuilder.AddColumn<string>(
-                name: "Bio",
-                table: "RefreshTokens",
-                type: "nvarchar(max)",
-                nullable: true);
+            // migrationBuilder.AddColumn<string>(
+            //     name: "Bio",
+            //     table: "RefreshTokens",
+            //     type: "nvarchar(max)",
+            //     nullable: true);
         }
     }
 }
