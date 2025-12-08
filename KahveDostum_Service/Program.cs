@@ -72,6 +72,7 @@ builder.Services.AddScoped<IFriendshipRepository, FriendshipRepository>();
 builder.Services.AddScoped<IConversationRepository, ConversationRepository>();
 builder.Services.AddScoped<IMessageRepository, MessageRepository>();
 builder.Services.AddScoped<IMessageReceiptRepository, MessageReceiptRepository>();
+builder.Services.AddScoped<IUserService, UserService>();
 
 //  🔥 EKSİK OLAN 2 REPOSITORY — ZORUNLU 🔥
 builder.Services.AddScoped<ICafeRepository, CafeRepository>();

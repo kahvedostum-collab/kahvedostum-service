@@ -20,23 +20,38 @@ public class AuthService(
 
     public async Task<LoginResultDto> RegisterAsync(RegisterRequestDto request)
     {
-        var exists = await _uow.Users.ExistsByUserNameOrEmailAsync(request.UserName, request.Email);
-        if (exists)
-            throw new InvalidOperationException("Kullanıcı adı veya email zaten kayıtlı.");
+        // kullanıcı adı ve email kontrolü
+        var (userNameExists, emailExists) = await _uow.Users.CheckUserConflictsAsync(request.UserName, request.Email);
 
+        if (userNameExists && emailExists)
+            throw new InvalidOperationException("Bu kullanıcı adı ve email zaten kayıtlı.");
+
+        if (userNameExists)
+            throw new InvalidOperationException("Bu kullanıcı adı zaten alınmış.");
+
+        if (emailExists)
+            throw new InvalidOperationException("Bu email adresi zaten kayıtlı.");
+
+        // 2) Password Hash
         CreatePasswordHash(request.Password, out var hash, out var salt);
 
+        // 3) User oluşturma
         var user = new User
         {
+            FirstName = request.FirstName,
+            LastName = request.LastName,
             UserName = request.UserName,
             Email = request.Email,
             PasswordHash = hash,
-            PasswordSalt = salt
+            PasswordSalt = salt,
+            CreatedAt = DateTime.UtcNow,
+            IsActive = true
         };
 
         await _uow.Users.AddAsync(user);
         await _uow.SaveChangesAsync();
 
+        // 4) Token üretimi
         var accessToken = _tokenService.GenerateAccessToken(user);
         var refreshToken = _tokenService.GenerateRefreshToken();
         refreshToken.UserId = user.Id;
@@ -44,6 +59,7 @@ public class AuthService(
         await _uow.RefreshTokens.AddAsync(refreshToken);
         await _uow.SaveChangesAsync();
 
+        // 5) Response
         return new LoginResultDto
         {
             AccessToken = accessToken,
@@ -74,6 +90,17 @@ public class AuthService(
         };
     }
 
+    public async Task LogoutAsync(LogoutRequestDto request)
+    {
+        var token = await _uow.RefreshTokens
+            .FirstOrDefaultAsync(t => t.Token == request.RefreshToken);
+
+        if (token == null)
+            throw new InvalidOperationException("Token bulunamadı.");
+
+        _uow.RefreshTokens.Remove(token);
+        await _uow.SaveChangesAsync();
+    }
 
     public async Task<LoginResultDto> RefreshAsync(RefreshRequestDto request)
     {

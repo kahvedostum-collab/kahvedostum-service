@@ -23,4 +23,11 @@ public class UserRepository(AppDbContext context)
         return _context.Users
             .AnyAsync(u => u.UserName == userName || u.Email == email);
     }
+    
+    public async Task<(bool userNameExists, bool emailExists)> CheckUserConflictsAsync(string userName, string email)
+    {
+        var userNameExists = await _context.Users.AnyAsync(u => u.UserName == userName);
+        var emailExists = await _context.Users.AnyAsync(u => u.Email == email);
+        return (userNameExists, emailExists);
+    }
 }
