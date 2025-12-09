@@ -25,6 +25,21 @@ public class AuthController(IAuthService authService) : ControllerBase
             return BadRequest(ApiResponse<object>.FailResponse(ex.Message, 400));
         }
     }
+    
+    [HttpPost("Logout")]
+    public async Task<IActionResult> Logout([FromBody] LogoutRequestDto request)
+    {
+        try
+        {
+            await _authService.LogoutAsync(request);
+            return Ok(ApiResponse<string>.SuccessResponse("Çıkış yapıldı."));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse<object>.FailResponse(ex.Message, 400));
+        }
+    }
+
 
     [HttpPost("Login")]
     [AllowAnonymous]
