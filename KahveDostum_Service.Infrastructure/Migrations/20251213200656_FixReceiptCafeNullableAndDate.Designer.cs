@@ -4,6 +4,7 @@ using KahveDostum_Service.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace KahveDostum_Service.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251213200656_FixReceiptCafeNullableAndDate")]
+    partial class FixReceiptCafeNullableAndDate
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -359,11 +362,6 @@ namespace KahveDostum_Service.Infrastructure.Migrations
                     b.Property<DateTime>("ReceiptDate")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("ReceiptHash")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("nvarchar(64)");
-
                     b.Property<string>("ReceiptNo")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
@@ -379,9 +377,6 @@ namespace KahveDostum_Service.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CafeId");
-
-                    b.HasIndex("ReceiptHash")
-                        .IsUnique();
 
                     b.HasIndex("UserId", "CafeId", "CreatedAt");
 

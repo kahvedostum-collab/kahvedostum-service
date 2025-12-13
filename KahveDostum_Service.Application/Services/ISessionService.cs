@@ -8,16 +8,21 @@ namespace KahveDostum_Service.Application.Services;
 public class SessionService : ISessionService
 {
     private readonly IUnitOfWork _uow;
+    private readonly ICafeTokenService _tokenService;
 
-    public SessionService(IUnitOfWork uow)
+    public SessionService(
+        IUnitOfWork uow,
+        ICafeTokenService tokenService)
     {
         _uow = uow;
+        _tokenService = tokenService;
     }
 
     public async Task<SessionDto> StartSessionAsync(int userId, int cafeId)
     {
         var now = DateTime.UtcNow;
 
+        // Kullanıcının eski aktif session'larını kapat
         var oldSessions = await _uow.UserSessions.GetActiveSessionsByUserIdAsync(userId);
         foreach (var session in oldSessions)
             session.Status = SessionStatus.Expired;
@@ -42,5 +47,14 @@ public class SessionService : ISessionService
             StartedAt = newSession.StartedAt,
             ExpiresAt = newSession.ExpiresAt
         };
+    }
+
+    public async Task<SessionDto> StartSessionByTokenAsync(int userId, string token)
+    {
+        // Token doğrulama burada
+        var cafeId = await _tokenService.ValidateTokenAsync(token);
+
+        // Aynı mantıkla session aç
+        return await StartSessionAsync(userId, cafeId);
     }
 }

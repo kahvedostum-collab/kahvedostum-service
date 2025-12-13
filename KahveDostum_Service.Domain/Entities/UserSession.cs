@@ -16,9 +16,12 @@ public class UserSession
     public int CafeId { get; set; }
     public Cafe Cafe { get; set; } = default!;
 
+    // Hangi token ile aktif oldu
+    public int? ActivationTokenId { get; set; }
+    public CafeActivationToken? ActivationToken { get; set; }
+
     public SessionStatus Status { get; set; } = SessionStatus.Active;
 
     public DateTime StartedAt { get; set; } = DateTime.UtcNow;
-
-    public DateTime ExpiresAt { get; set; } = DateTime.UtcNow.AddHours(1);
+    public DateTime ExpiresAt { get; set; }
 }

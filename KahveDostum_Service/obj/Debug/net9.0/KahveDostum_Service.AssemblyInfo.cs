@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("KahveDostum_Service")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+7f381d00d41f220b97e64d22fb2ec16e2be49f6a")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+e02a3f2ea9fb317c763b2591ef519389a122da90")]
 [assembly: System.Reflection.AssemblyProductAttribute("KahveDostum_Service")]
 [assembly: System.Reflection.AssemblyTitleAttribute("KahveDostum_Service")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

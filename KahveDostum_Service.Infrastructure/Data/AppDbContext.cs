@@ -18,6 +18,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Cafe> Cafes => Set<Cafe>();
     public DbSet<Receipt> Receipts => Set<Receipt>();
     public DbSet<ReceiptLine> ReceiptLines => Set<ReceiptLine>();
+    public DbSet<Company> Companies => Set<Company>();
+    public DbSet<CafeActivationToken> CafeActivationTokens => Set<CafeActivationToken>();
+
 
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -66,7 +69,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
             entity.HasIndex(f => new { f.UserId, f.FriendUserId }).IsUnique();
         });
-
+        
         // USER SESSION
         modelBuilder.Entity<UserSession>(entity =>
         {
@@ -76,7 +79,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasOne(s => s.Cafe)
-                .WithMany()
+                .WithMany(c => c.Sessions)
                 .HasForeignKey(s => s.CafeId)
                 .OnDelete(DeleteBehavior.Cascade);
 
@@ -86,8 +89,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         // CAFE
         modelBuilder.Entity<Cafe>(entity =>
         {
-            entity.Property(c => c.Name).IsRequired().HasMaxLength(200);
-            entity.Property(c => c.Address).IsRequired().HasMaxLength(500);
+            entity.Property(c => c.Name)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(c => c.Address)
+                .IsRequired()
+                .HasMaxLength(500);
+
+            entity.HasOne(c => c.Company)
+                .WithMany(co => co.Cafes)
+                .HasForeignKey(c => c.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(c => c.CompanyId);
         });
         // ConversationParticipant
         modelBuilder.Entity<ConversationParticipant>(entity =>
@@ -136,6 +151,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
             entity.HasIndex(r => new { r.MessageId, r.UserId }).IsUnique();
         });
+        
         // RECEIPT
         modelBuilder.Entity<Receipt>(entity =>
         {
@@ -143,29 +159,56 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
             entity.HasKey(r => r.Id);
 
-            entity.Property(r => r.Brand).HasMaxLength(255);
-            entity.Property(r => r.Date).HasMaxLength(50);
-            entity.Property(r => r.Time).HasMaxLength(50);
-            entity.Property(r => r.ReceiptNo).HasMaxLength(100);
-            entity.Property(r => r.Total).HasMaxLength(50);
-            entity.Property(r => r.City).HasMaxLength(100);
-            entity.Property(r => r.District).HasMaxLength(100);
+            entity.Property(r => r.Brand)
+                .HasMaxLength(255);
 
+            entity.Property(r => r.ReceiptNo)
+                .HasMaxLength(100);
+
+            entity.Property(r => r.Total)
+                .HasMaxLength(50)
+                .IsRequired();
+
+            entity.Property(r => r.City)
+                .HasMaxLength(100);
+
+            entity.Property(r => r.District)
+                .HasMaxLength(100);
+
+            entity.Property(r => r.Address)
+                .HasMaxLength(500);
+
+            entity.Property(r => r.RawText);
+
+            // 📄 FİŞ TARİHİ (OCR)
+            entity.Property(r => r.ReceiptDate)
+                .IsRequired();
+
+            // 🔐 SERVER TIME
             entity.Property(r => r.CreatedAt)
                 .HasDefaultValueSql("GETUTCDATE()");
 
+            // 🔒 RECEIPT HASH (ANTI-FRAUD)
+            entity.Property(r => r.ReceiptHash)
+                .IsRequired()
+                .HasMaxLength(64);
+
+            entity.HasIndex(r => r.ReceiptHash)
+                .IsUnique();
+
             entity.HasOne(r => r.User)
-                .WithMany(u => u.Receipts)        
+                .WithMany(u => u.Receipts)
                 .HasForeignKey(r => r.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasOne(r => r.Cafe)
-                .WithMany()                     
+                .WithMany()
                 .HasForeignKey(r => r.CafeId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.SetNull);
 
             entity.HasIndex(r => new { r.UserId, r.CafeId, r.CreatedAt });
         });
+        
 
         // RECEIPT LINE
         modelBuilder.Entity<ReceiptLine>(entity =>
@@ -184,6 +227,50 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasIndex(rl => new { rl.ReceiptId, rl.LineIndex })
                 .IsUnique();
         });
+        
+        // COMPANY
+        modelBuilder.Entity<Company>(entity =>
+        {
+            entity.Property(c => c.Name)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.HasIndex(c => c.Name)
+                .IsUnique();
+        });
+        
+        // CAFE ACTIVATION TOKEN
+        modelBuilder.Entity<CafeActivationToken>(entity =>
+        {
+            entity.Property(t => t.Token)
+                .IsRequired()
+                .HasMaxLength(64);
+
+            entity.HasIndex(t => t.Token)
+                .IsUnique();
+
+            entity.HasOne(t => t.Cafe)
+                .WithMany()
+                .HasForeignKey(t => t.CafeId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(t => t.Receipt)
+                .WithMany(r => r.ActivationTokens)
+                .HasForeignKey(t => t.ReceiptId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            entity.HasIndex(t => new { t.CafeId, t.IsUsed });
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(t => t.IssuedByUserId)
+                .OnDelete(DeleteBehavior.NoAction);
+            
+            entity.HasIndex(t => t.IssuedByUserId);
+        });
+        
+
+
 
     }
 }

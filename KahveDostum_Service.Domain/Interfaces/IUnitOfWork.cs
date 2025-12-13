@@ -7,8 +7,17 @@ public interface IUnitOfWork : IAsyncDisposable
 
     IFriendRequestRepository FriendRequests { get; }  
     IFriendshipRepository Friendships { get; }
+
+    ICompanyRepository Companies { get; }
     ICafeRepository Cafes { get; }
+
     IUserSessionRepository UserSessions { get; }
+
+    IReceiptRepository Receipts { get; }
+    IReceiptLineRepository ReceiptLines { get; }
+
+    ICafeActivationTokenRepository CafeActivationTokens { get; }
+
     IConversationRepository Conversations { get; }      
     IMessageRepository Messages { get; }                
     IMessageReceiptRepository MessageReceipts { get; }  
