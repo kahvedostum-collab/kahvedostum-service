@@ -65,6 +65,12 @@ builder.Services.AddAuthorization();
 // ---------------------------
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+builder.Services.AddScoped<ICompanyRepository, CompanyRepository>();
+
+builder.Services.AddScoped<IReceiptRepository, ReceiptRepository>();
+builder.Services.AddScoped<IReceiptLineRepository, ReceiptLineRepository>();
+
+builder.Services.AddScoped<ICafeActivationTokenRepository, CafeActivationTokenRepository>();
 
 builder.Services.AddScoped<IFriendRequestRepository, FriendRequestRepository>();
 builder.Services.AddScoped<IFriendshipRepository, FriendshipRepository>();
@@ -89,6 +95,8 @@ builder.Services.AddScoped<IFriendService, FriendService>();
 builder.Services.AddScoped<IMessageService, MessageService>();
 builder.Services.AddScoped<ICafeService, CafeService>();
 builder.Services.AddScoped<ISessionService, SessionService>();
+builder.Services.AddScoped<ICafeTokenService, CafeTokenService>();
+builder.Services.AddScoped<IReceiptService, ReceiptService>();
 
 // ---------------------------
 // Controllers + Swagger

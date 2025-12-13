@@ -19,12 +19,13 @@ public class SessionController : ControllerBase
 
     private int GetUserId()
         => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-
+    
+    
     [Authorize]
-    [HttpPost("start")]
-    public async Task<IActionResult> StartSession([FromBody] StartSessionRequestDto req)
+    [HttpPost("activate")]
+    public async Task<IActionResult> ActivateByToken([FromBody] ActivateSessionByTokenRequestDto req)
     {
-        var result = await _service.StartSessionAsync(GetUserId(), req.CafeId);
-        return Ok(ApiResponse<SessionDto>.SuccessResponse(result, "Oturum başlatıldı."));
+        var result = await _service.StartSessionByTokenAsync(GetUserId(), req.Token);
+        return Ok(ApiResponse<SessionDto>.SuccessResponse(result, "Aktiflik kazanıldı."));
     }
 }

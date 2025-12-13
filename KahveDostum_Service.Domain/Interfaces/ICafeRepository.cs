@@ -7,4 +7,6 @@ public interface ICafeRepository
     Task<Cafe?> GetByIdAsync(int id);
     Task<List<Cafe>> GetAllAsync();
     Task AddAsync(Cafe cafe);
+    Task<Cafe?> GetByTaxNumberAsync(string taxNumber);
+    Task<Cafe?> GetByNormalizedAddressAsync(string normalizedAddress);
 }
