@@ -3,6 +3,7 @@ using KahveDostum_Service.Application.Dtos;
 using KahveDostum_Service.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+
 namespace KahveDostum_Service.Controllers;
 
 [Authorize]
@@ -20,34 +21,38 @@ public class ReceiptController : ControllerBase
     private int GetUserId()
         => int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
-    [HttpPost("scan")]
-    public async Task<IActionResult> Scan([FromBody] CreateReceiptDto dto)
+    // 1️⃣ INIT → presigned upload url
+    [HttpPost("init")]
+    public async Task<IActionResult> Init([FromBody] ReceiptInitRequestDto dto)
     {
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(
-                ApiResponse<object>.FailResponse(
-                    "Zorunlu fiş alanları eksik.",
-                    StatusCodes.Status400BadRequest));
-        }
+        var result = await _service.InitAsync(GetUserId(), dto);
 
-        try
-        {
-            var result = await _service.ScanReceiptAsync(GetUserId(), dto);
+        return Ok(ApiResponse<ReceiptInitResponseDto>.SuccessResponse(
+            result,
+            "Upload başlatıldı."));
+    }
 
-            return Ok(
-                ApiResponse<CafeTokenDto>.SuccessResponse(
-                    result,
-                    "Token üretildi."));
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(
-                ApiResponse<object>.FailResponse(
-                    ex.Message,
-                    StatusCodes.Status400BadRequest));
-        }
+    // 2️⃣ COMPLETE → RabbitMQ job bas
+    [HttpPost("{receiptId:int}/complete")]
+    public async Task<IActionResult> Complete(
+        [FromRoute] int receiptId,
+        [FromBody] ReceiptCompleteRequestDto dto)
+    {
+        var result = await _service.CompleteAsync(GetUserId(), receiptId, dto);
+
+        return Ok(ApiResponse<ReceiptCompleteResponseDto>.SuccessResponse(
+            result,
+            "Fiş OCR kuyruğa alındı."));
+    }
+
+    // 3️⃣ STATUS → receipt + OCR sonucu
+    [HttpGet("{receiptId:int}")]
+    public async Task<IActionResult> Get([FromRoute] int receiptId)
+    {
+        var result = await _service.GetStatusAsync(GetUserId(), receiptId);
+
+        return Ok(ApiResponse<ReceiptStatusResponseDto>.SuccessResponse(
+            result,
+            "Fiş durumu getirildi."));
     }
 }
-
-
