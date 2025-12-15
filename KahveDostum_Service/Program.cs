@@ -5,6 +5,9 @@ using KahveDostum_Service.Domain.Interfaces;
 using KahveDostum_Service.Infrastructure.Data;
 using KahveDostum_Service.Infrastructure.Repositories;
 using KahveDostum_Service.Extensions;
+using KahveDostum_Service.Infrastructure.Background;
+using KahveDostum_Service.Infrastructure.Options;
+using KahveDostum_Service.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -30,6 +33,13 @@ builder.Services.AddCors(options =>
 // ---------------------------
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// ---------------------------
+// MinIO + Rabbit Options
+// ---------------------------
+builder.Services.Configure<MinioOptions>(builder.Configuration.GetSection("Minio"));
+builder.Services.Configure<RabbitOptions>(builder.Configuration.GetSection("Rabbit"));
+
 
 // ---------------------------
 // JWT
@@ -59,10 +69,17 @@ builder.Services
     });
 
 builder.Services.AddAuthorization();
+// ---------------------------
+// Infrastructure Services (MinIO + Rabbit)
+// ---------------------------
+builder.Services.AddSingleton<IObjectStorage, MinioStorage>();
+builder.Services.AddSingleton<IOcrJobPublisher, RabbitOcrJobPublisher>();
+
 
 // ---------------------------
 // Repositories + UoW
 // ---------------------------
+
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<ICompanyRepository, CompanyRepository>();
@@ -79,6 +96,7 @@ builder.Services.AddScoped<IConversationRepository, ConversationRepository>();
 builder.Services.AddScoped<IMessageRepository, MessageRepository>();
 builder.Services.AddScoped<IMessageReceiptRepository, MessageReceiptRepository>();
 builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IReceiptOcrResultRepository, ReceiptOcrResultRepository>();
 
 //  🔥 EKSİK OLAN 2 REPOSITORY — ZORUNLU 🔥
 builder.Services.AddScoped<ICafeRepository, CafeRepository>();
@@ -103,6 +121,7 @@ builder.Services.AddScoped<IReceiptService, ReceiptService>();
 // ---------------------------
 builder.Services.AddControllers();
 builder.Services.AddSwaggerDocumentation();
+builder.Services.AddHostedService<ResultsConsumer>();
 
 var app = builder.Build();
 

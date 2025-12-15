@@ -21,6 +21,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Company> Companies => Set<Company>();
     public DbSet<CafeActivationToken> CafeActivationTokens => Set<CafeActivationToken>();
 
+    public DbSet<ReceiptOcrResult> ReceiptOcrResults => Set<ReceiptOcrResult>();
+
 
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -156,45 +158,42 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<Receipt>(entity =>
         {
             entity.ToTable("Receipts");
-
             entity.HasKey(r => r.Id);
 
-            entity.Property(r => r.Brand)
-                .HasMaxLength(255);
+            entity.Property(r => r.Brand).HasMaxLength(255);
+            entity.Property(r => r.ReceiptNo).HasMaxLength(100);
 
-            entity.Property(r => r.ReceiptNo)
-                .HasMaxLength(100);
+            // ✅ INIT'te boş olacağı için required KALDIRILDI
+            entity.Property(r => r.Total).HasMaxLength(50);
 
-            entity.Property(r => r.Total)
-                .HasMaxLength(50)
-                .IsRequired();
-
-            entity.Property(r => r.City)
-                .HasMaxLength(100);
-
-            entity.Property(r => r.District)
-                .HasMaxLength(100);
-
-            entity.Property(r => r.Address)
-                .HasMaxLength(500);
+            entity.Property(r => r.City).HasMaxLength(100);
+            entity.Property(r => r.District).HasMaxLength(100);
+            entity.Property(r => r.Address).HasMaxLength(500);
 
             entity.Property(r => r.RawText);
 
-            // 📄 FİŞ TARİHİ (OCR)
-            entity.Property(r => r.ReceiptDate)
-                .IsRequired();
+            // ✅ INIT'te boş olacağı için required KALDIRILDI
+            entity.Property(r => r.ReceiptDate);
 
-            // 🔐 SERVER TIME
             entity.Property(r => r.CreatedAt)
                 .HasDefaultValueSql("GETUTCDATE()");
 
-            // 🔒 RECEIPT HASH (ANTI-FRAUD)
+            // ✅ INIT'te boş olacağı için required KALDIRILDI
             entity.Property(r => r.ReceiptHash)
-                .IsRequired()
                 .HasMaxLength(64);
 
-            entity.HasIndex(r => r.ReceiptHash)
-                .IsUnique();
+            entity.HasIndex(r => r.ReceiptHash).IsUnique();
+
+            // ===== Pipeline alanları =====
+            entity.Property(r => r.Status)
+                .HasConversion<int>(); // enum int
+
+            entity.Property(r => r.Bucket).HasMaxLength(128);
+            entity.Property(r => r.ObjectKey).HasMaxLength(512);
+            entity.Property(r => r.OcrJobId).HasMaxLength(64);
+            entity.Property(r => r.RejectReason).HasMaxLength(512);
+
+            entity.HasIndex(r => new { r.UserId, r.Status, r.CreatedAt });
 
             entity.HasOne(r => r.User)
                 .WithMany(u => u.Receipts)
@@ -208,6 +207,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
             entity.HasIndex(r => new { r.UserId, r.CafeId, r.CreatedAt });
         });
+
         
 
         // RECEIPT LINE
@@ -268,8 +268,39 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             
             entity.HasIndex(t => t.IssuedByUserId);
         });
-        
 
+        // RECEIPTOCRRESULT
+        modelBuilder.Entity<ReceiptOcrResult>(entity =>
+        {
+            entity.ToTable("ReceiptOcrResults");
+
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.JobId)
+                .IsRequired()
+                .HasMaxLength(64);
+
+            entity.Property(x => x.Status)
+                .IsRequired()
+                .HasMaxLength(20);
+
+            entity.Property(x => x.PayloadJson);
+            entity.Property(x => x.RawText);
+            entity.Property(x => x.Error);
+
+            entity.Property(x => x.CreatedAt)
+                .HasDefaultValueSql("GETUTCDATE()");
+
+            // FK → Receipt
+            entity.HasOne(x => x.Receipt)
+                .WithMany()
+                .HasForeignKey(x => x.ReceiptId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // performans
+            entity.HasIndex(x => x.ReceiptId);
+            entity.HasIndex(x => x.CreatedAt);
+        });
 
 
     }

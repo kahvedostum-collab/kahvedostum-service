@@ -1,22 +1,165 @@
+using System.Text.Json;
 using KahveDostum_Service.Application.Dtos;
 using KahveDostum_Service.Application.Helpers;
 using KahveDostum_Service.Application.Interfaces;
 using KahveDostum_Service.Domain.Entities;
+using KahveDostum_Service.Application.Interfaces;
 using KahveDostum_Service.Domain.Interfaces;
+
 
 namespace KahveDostum_Service.Application.Services;
 
 public class ReceiptService : IReceiptService
 {
+    private const string DefaultBucket = "receipts";
+    private const int PresignSeconds = 300;
+
     private readonly IUnitOfWork _uow;
     private readonly ICafeTokenService _tokenService;
+    private readonly IObjectStorage _storage;
+    private readonly IOcrJobPublisher _publisher;
 
-    public ReceiptService(IUnitOfWork uow, ICafeTokenService tokenService)
+    public ReceiptService(
+        IUnitOfWork uow,
+        ICafeTokenService tokenService,
+        IObjectStorage storage,
+        IOcrJobPublisher publisher)
     {
         _uow = uow;
         _tokenService = tokenService;
+        _storage = storage;
+        _publisher = publisher;
     }
 
+    // 1) INIT: receipt oluştur + presigned url dön
+    // 1) INIT: receipt oluştur + presigned url dön
+    public async Task<ReceiptInitResponseDto> InitAsync(int userId, ReceiptInitRequestDto dto)
+    {
+        if (dto.CafeId.HasValue)
+        {
+            var cafe = await _uow.Cafes.GetByIdAsync(dto.CafeId.Value);
+            if (cafe == null)
+                throw new ArgumentException("Cafe bulunamadı.");
+        }
+
+        var receipt = new Receipt
+        {
+            UserId = userId,
+            CafeId = dto.CafeId,
+            ClientLat = dto.Lat,
+            ClientLng = dto.Lng,
+            Status = ReceiptStatus.INIT,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await _uow.Receipts.AddAsync(receipt);
+        await _uow.SaveChangesAsync(); // Id oluşur
+
+        // bucket + objectKey
+        var bucket = DefaultBucket;
+        var objectKey = $"uploads/{DateTime.UtcNow:yyyy/MM/dd}/{receipt.Id}.jpg";
+
+        // presigned url
+        var uploadUrl = await _storage.PresignPutAsync(
+            bucket: bucket,
+            objectKey: objectKey,
+            expirySeconds: PresignSeconds,
+            ct: CancellationToken.None);
+
+        // db update
+        receipt.Bucket = bucket;
+        receipt.ObjectKey = objectKey;
+        receipt.UploadedAt = DateTime.UtcNow;
+
+        await _uow.SaveChangesAsync();
+
+        return new ReceiptInitResponseDto
+        {
+            ReceiptId = receipt.Id,
+            Bucket = bucket,
+            ObjectKey = objectKey,
+            UploadUrl = uploadUrl
+        };
+    }
+
+
+    // 2) COMPLETE: upload bitti -> job bas + status PROCESSING
+    public async Task<ReceiptCompleteResponseDto> CompleteAsync(int userId, int receiptId, ReceiptCompleteRequestDto dto)
+    {
+        var receipt = await _uow.Receipts.GetByIdAsync(receiptId);
+        if (receipt == null)
+            throw new ArgumentException("Fiş bulunamadı.");
+
+        if (receipt.UserId != userId)
+            throw new ArgumentException("Bu fişe erişim yok.");
+
+        // Idempotent: zaten processing/done ise tekrar job basma
+        if (receipt.Status is ReceiptStatus.PROCESSING or ReceiptStatus.DONE)
+        {
+            return new ReceiptCompleteResponseDto
+            {
+                ReceiptId = receipt.Id,
+                Status = receipt.Status.ToString()
+            };
+        }
+
+        // Bucket/ObjectKey init ile set edildi; yine de dto ile override edebilirsin
+        receipt.Bucket = dto.Bucket ?? receipt.Bucket ?? DefaultBucket;
+        receipt.ObjectKey = dto.ObjectKey ?? receipt.ObjectKey;
+
+        if (string.IsNullOrWhiteSpace(receipt.ObjectKey))
+            throw new ArgumentException("ObjectKey boş. Önce init + upload yapmalısın.");
+
+        receipt.Status = ReceiptStatus.PROCESSING;
+        receipt.UploadedAt ??= DateTime.UtcNow;
+
+        var jobId = Guid.NewGuid().ToString("N");
+        receipt.OcrJobId = jobId;
+
+        await _uow.SaveChangesAsync();
+
+        var job = new OcrJobMessage
+        {
+            JobId = jobId,
+            ReceiptId = receipt.Id,
+            UserId = receipt.UserId,
+            CafeId = receipt.CafeId,
+            Bucket = receipt.Bucket!,
+            ObjectKey = receipt.ObjectKey!,
+            ClientLat = receipt.ClientLat,
+            ClientLng = receipt.ClientLng
+        };
+
+        await _publisher.PublishAsync(job);
+
+        return new ReceiptCompleteResponseDto
+        {
+            ReceiptId = receipt.Id,
+            Status = "PROCESSING"
+        };
+    }
+
+    // 3) STATUS: receipt + varsa son ocr result
+    public async Task<ReceiptStatusResponseDto> GetStatusAsync(int userId, int receiptId)
+    {
+        var receipt = await _uow.Receipts
+            .GetByIdAsync(receiptId);
+
+        if (receipt == null || receipt.UserId != userId)
+            throw new ArgumentException("Fiş bulunamadı.");
+
+        var ocrResult = await _uow.ReceiptOcrResults
+            .GetByReceiptIdAsync(receiptId);
+
+        return new ReceiptStatusResponseDto
+        {
+            ReceiptId = receipt.Id,
+            Status = receipt.Status.ToString(),
+            Result = ocrResult
+        };
+    }
+
+    // Eski scan akışı (manual input) aynen kalsın
     public async Task<CafeTokenDto> ScanReceiptAsync(int userId, CreateReceiptDto dto)
     {
         if (string.IsNullOrWhiteSpace(dto.TaxNumber))
@@ -33,15 +176,12 @@ public class ReceiptService : IReceiptService
 
         var normalizedAddress = AddressNormalizer.Normalize(dto.Address);
 
-        // KAFE BUL
         Cafe? cafe = await _uow.Cafes.GetByTaxNumberAsync(dto.TaxNumber)
                      ?? await _uow.Cafes.GetByNormalizedAddressAsync(normalizedAddress);
 
         if (cafe == null)
-            throw new ArgumentException(
-                "Bu fiş tanımlı ve aktif bir kafeye ait değil.");
+            throw new ArgumentException("Bu fiş tanımlı ve aktif bir kafeye ait değil.");
 
-        // HASH OLUŞTUR
         var receiptHash = ReceiptHashHelper.Generate(
             dto.TaxNumber,
             dto.Total,
@@ -49,14 +189,10 @@ public class ReceiptService : IReceiptService
             dto.ReceiptNo,
             dto.RawText);
 
-
-        // AYNI FİŞ KONTROLÜ (ASLA GEÇEMEZ)
         var exists = await _uow.Receipts.ExistsByHashAsync(receiptHash);
         if (exists)
-            throw new ArgumentException(
-                "Bu fiş daha önce kullanılmış.");
+            throw new ArgumentException("Bu fiş daha önce kullanılmış.");
 
-        // RECEIPT KAYDI
         var receipt = new Receipt
         {
             UserId = userId,
@@ -72,14 +208,6 @@ public class ReceiptService : IReceiptService
         await _uow.Receipts.AddAsync(receipt);
         await _uow.SaveChangesAsync();
 
-        // TOKEN
-        return await _tokenService.GenerateTokenAsync(
-            userId,
-            cafe.Id,
-            receipt.Id);
+        return await _tokenService.GenerateTokenAsync(userId, cafe.Id, receipt.Id);
     }
-
-    
-    
-
 }
