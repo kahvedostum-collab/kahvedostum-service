@@ -10,4 +10,5 @@ public class OcrJobMessage
     public string ObjectKey { get; set; } = default!;
     public double? ClientLat { get; set; }
     public double? ClientLng { get; set; }
+    public string ChannelKey { get; set; } = default!;
 }

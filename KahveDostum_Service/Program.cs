@@ -39,7 +39,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // ---------------------------
 builder.Services.Configure<MinioOptions>(builder.Configuration.GetSection("Minio"));
 builder.Services.Configure<RabbitOptions>(builder.Configuration.GetSection("Rabbit"));
-
+builder.Services.Configure<RealtimeOptions>(builder.Configuration.GetSection("Realtime"));
 
 // ---------------------------
 // JWT
@@ -119,6 +119,7 @@ builder.Services.AddScoped<IReceiptService, ReceiptService>();
 // ---------------------------
 // Controllers + Swagger
 // ---------------------------
+builder.Services.AddHttpClient("realtime"); 
 builder.Services.AddControllers();
 builder.Services.AddSwaggerDocumentation();
 builder.Services.AddHostedService<ResultsConsumer>();

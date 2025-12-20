@@ -32,7 +32,6 @@ public class ReceiptService : IReceiptService
     }
 
     // 1) INIT: receipt oluştur + presigned url dön
-    // 1) INIT: receipt oluştur + presigned url dön
     public async Task<ReceiptInitResponseDto> InitAsync(int userId, ReceiptInitRequestDto dto)
     {
         if (dto.CafeId.HasValue)
@@ -42,6 +41,9 @@ public class ReceiptService : IReceiptService
                 throw new ArgumentException("Cafe bulunamadı.");
         }
 
+        // 🔴 Her fiş için uniq channel
+        var channelKey = Guid.NewGuid().ToString("N");
+
         var receipt = new Receipt
         {
             UserId = userId,
@@ -49,24 +51,22 @@ public class ReceiptService : IReceiptService
             ClientLat = dto.Lat,
             ClientLng = dto.Lng,
             Status = ReceiptStatus.INIT,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            ChannelKey = channelKey
         };
 
         await _uow.Receipts.AddAsync(receipt);
-        await _uow.SaveChangesAsync(); // Id oluşur
+        await _uow.SaveChangesAsync();
 
-        // bucket + objectKey
         var bucket = DefaultBucket;
-        var objectKey = $"uploads/{DateTime.UtcNow:yyyy/MM/dd}/{receipt.Id}.jpg";
+        var objectKey = $"uploads/{DateTime.UtcNow:yyyy.MM.dd}/{receipt.Id}.jpg";
 
-        // presigned url
         var uploadUrl = await _storage.PresignPutAsync(
             bucket: bucket,
             objectKey: objectKey,
             expirySeconds: PresignSeconds,
             ct: CancellationToken.None);
 
-        // db update
         receipt.Bucket = bucket;
         receipt.ObjectKey = objectKey;
         receipt.UploadedAt = DateTime.UtcNow;
@@ -76,11 +76,13 @@ public class ReceiptService : IReceiptService
         return new ReceiptInitResponseDto
         {
             ReceiptId = receipt.Id,
+            ChannelKey = channelKey,     
             Bucket = bucket,
             ObjectKey = objectKey,
             UploadUrl = uploadUrl
         };
     }
+
 
 
     // 2) COMPLETE: upload bitti -> job bas + status PROCESSING
@@ -93,7 +95,6 @@ public class ReceiptService : IReceiptService
         if (receipt.UserId != userId)
             throw new ArgumentException("Bu fişe erişim yok.");
 
-        // Idempotent: zaten processing/done ise tekrar job basma
         if (receipt.Status is ReceiptStatus.PROCESSING or ReceiptStatus.DONE)
         {
             return new ReceiptCompleteResponseDto
@@ -103,7 +104,6 @@ public class ReceiptService : IReceiptService
             };
         }
 
-        // Bucket/ObjectKey init ile set edildi; yine de dto ile override edebilirsin
         receipt.Bucket = dto.Bucket ?? receipt.Bucket ?? DefaultBucket;
         receipt.ObjectKey = dto.ObjectKey ?? receipt.ObjectKey;
 
@@ -127,7 +127,8 @@ public class ReceiptService : IReceiptService
             Bucket = receipt.Bucket!,
             ObjectKey = receipt.ObjectKey!,
             ClientLat = receipt.ClientLat,
-            ClientLng = receipt.ClientLng
+            ClientLng = receipt.ClientLng,
+            ChannelKey = receipt.ChannelKey    // 🔴 buradan worker’a gidecek
         };
 
         await _publisher.PublishAsync(job);
@@ -138,6 +139,7 @@ public class ReceiptService : IReceiptService
             Status = "PROCESSING"
         };
     }
+
 
     // 3) STATUS: receipt + varsa son ocr result
     public async Task<ReceiptStatusResponseDto> GetStatusAsync(int userId, int receiptId)

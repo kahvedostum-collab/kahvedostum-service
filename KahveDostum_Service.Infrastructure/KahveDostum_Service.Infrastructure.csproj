@@ -10,6 +10,7 @@
       <ProjectReference Include="..\KahveDostum_Service.Domain\KahveDostum_Service.Domain.csproj" />
       <ProjectReference Include="..\KahveDostum_Service.Application\KahveDostum_Service.Application.csproj" />
         <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
     </ItemGroup>
 
     <ItemGroup>
