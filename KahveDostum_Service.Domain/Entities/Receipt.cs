@@ -20,6 +20,7 @@ public class Receipt
 
     public DateTime? UploadedAt { get; set; }
     public DateTime? ProcessedAt { get; set; }
+    public string ChannelKey { get; set; } = Guid.NewGuid().ToString("N");
 
     // ===== OCR sonucu fiş alanları (SENDE VAR) =====
     public string? Brand { get; set; }
