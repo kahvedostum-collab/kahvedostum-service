@@ -55,6 +55,8 @@ public sealed class ResultsConsumer : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        Console.WriteLine("🔥🔥 RESULTS CONSUMER EXECUTEASYNC ÇALIŞTI 🔥🔥");
+        _logger.LogCritical("🔥🔥 RESULTS CONSUMER EXECUTEASYNC ÇALIŞTI 🔥🔥");
         _logger.LogInformation(
             "ResultsConsumer connecting to RabbitMQ {Host}:{Port} vhost={VHost}",
             _opt.Host, _opt.Port, _opt.VHost);
@@ -101,20 +103,32 @@ public sealed class ResultsConsumer : BackgroundService
             _opt.ResultsQueue);
 
         var consumer = new AsyncEventingBasicConsumer(_channel);
+
         consumer.ReceivedAsync += async (_, ea) =>
         {
+            _logger.LogCritical("🔥🔥 OCR RESULT MESSAGE RECEIVED 🔥🔥");
+
             try
             {
                 var json = Encoding.UTF8.GetString(ea.Body.ToArray());
                 _logger.LogInformation("ResultsConsumer message: {Json}", json);
+                _logger.LogCritical("📦 RAW JSON = {Json}", json);
 
-                var msg = JsonSerializer.Deserialize<OcrResultMessage>(json, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
+                var msg = JsonSerializer.Deserialize<OcrResultMessage>(
+                    json,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                );
+
+                _logger.LogCritical(
+                    "🧠 DESERIALIZED => ReceiptId={ReceiptId}, Status={Status}, ChannelKey={ChannelKey}",
+                    msg?.ReceiptId,
+                    msg?.Status,
+                    msg?.ChannelKey
+                );
 
                 if (msg is null || msg.ReceiptId <= 0)
                 {
+                    _logger.LogCritical("❌ MESSAGE INVALID");
                     await _channel.BasicAckAsync(ea.DeliveryTag, false, cancellationToken: stoppingToken);
                     return;
                 }
@@ -126,6 +140,18 @@ public sealed class ResultsConsumer : BackgroundService
                     .Include(r => r.Lines)
                     .FirstOrDefaultAsync(r => r.Id == msg.ReceiptId, stoppingToken);
 
+                if (receipt == null)
+                {
+                    _logger.LogCritical("❌ RECEIPT DB'DE YOK receiptId={Id}", msg.ReceiptId);
+                }
+                else
+                {
+                    _logger.LogCritical(
+                        "✅ RECEIPT BULUNDU receiptId={Id} currentStatus={Status}",
+                        receipt.Id,
+                        receipt.Status
+                    );
+                }
                 if (receipt == null)
                 {
                     await _channel.BasicAckAsync(ea.DeliveryTag, false, cancellationToken: stoppingToken);
@@ -174,6 +200,8 @@ public sealed class ResultsConsumer : BackgroundService
 
                 if (string.Equals(msg.Status, "DONE", StringComparison.OrdinalIgnoreCase))
                 {
+                    _logger.LogCritical("✅✅ DONE STATUS ALGILANDI receiptId={Id}", receipt.Id);
+
                     receipt.Status = ReceiptStatus.DONE;
                     receipt.ProcessedAt = DateTime.UtcNow;
 
@@ -190,6 +218,11 @@ public sealed class ResultsConsumer : BackgroundService
                 }
                 else
                 {
+                    _logger.LogCritical(
+                        "⚠️ FAILED / UNKNOWN STATUS receiptId={Id} status={Status}",
+                        receipt.Id,
+                        msg.Status
+                    );
                     receipt.Status = ReceiptStatus.FAILED;
                     receipt.ProcessedAt = DateTime.UtcNow;
                     receipt.RejectReason = msg.Error ?? "OCR FAILED";
@@ -221,12 +254,37 @@ public sealed class ResultsConsumer : BackgroundService
                 }
 
                 await db.SaveChangesAsync(stoppingToken);
+                _logger.LogCritical(
+                    "💾 DB SAVE OK receiptId={Id} newStatus={Status}",
+                    receipt.Id,
+                    receipt.Status
+                );
 
                 _logger.LogInformation("Receipt {Id} updated. Status={Status}", receipt.Id, receipt.Status);
 
+                // 🔴 Cafe aktifliği ver (business-critical)
+                if (receipt.Status == ReceiptStatus.DONE && receipt.CafeId.HasValue)
+                {
+                    try
+                    {
+                        await GrantCafeActiveAsync(receipt, stoppingToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex,
+                            "Cafe active grant failed for receipt {ReceiptId}",
+                            receipt.Id);
+                    }
+                }
+                
                 // 🔴 Realtime'a haber ver (SignalR)
                 try
                 {
+                    _logger.LogCritical(
+                        "📡 REALTIME NOTIFY ÇAĞRILIYOR receiptId={Id} status={Status}",
+                        receipt.Id,
+                        receipt.Status
+                    );
                     await NotifyRealtimeAsync(msg, receipt, stoppingToken);
                 }
                 catch (Exception ex)
@@ -257,6 +315,42 @@ public sealed class ResultsConsumer : BackgroundService
             cancellationToken: stoppingToken);
 
         await Task.Delay(Timeout.Infinite, stoppingToken);
+    }
+
+    private async Task GrantCafeActiveAsync(Receipt receipt, CancellationToken ct)
+    {
+        if (!receipt.CafeId.HasValue)
+            return;
+
+        var client = _httpClientFactory.CreateClient("realtime");
+        client.BaseAddress = new Uri(_rtOpt.BaseUrl.TrimEnd('/'));
+
+        if (!string.IsNullOrWhiteSpace(_rtOpt.InternalApiKey))
+        {
+            client.DefaultRequestHeaders.Add(
+                "X-Internal-ApiKey",
+                _rtOpt.InternalApiKey
+            );
+        }
+
+        var dto = new
+        {
+            CafeId = receipt.CafeId.Value,
+            UserId = receipt.UserId,
+            ReceiptId = receipt.Id
+        };
+
+        var response = await client.PostAsJsonAsync(
+            "/internal/cafe/grant-active",
+            dto,
+            ct
+        );
+
+        response.EnsureSuccessStatusCode();
+
+        _logger.LogInformation(
+            "Cafe active granted. Receipt={ReceiptId}, Cafe={CafeId}, User={UserId}",
+            receipt.Id, receipt.CafeId.Value, receipt.UserId);
     }
 
     private async Task NotifyRealtimeAsync(OcrResultMessage msg, Receipt receipt, CancellationToken ct)
@@ -296,8 +390,22 @@ public sealed class ResultsConsumer : BackgroundService
             brand = receipt.Brand
         };
 
-        var response = await client.PostAsJsonAsync("/internal/receipts/status-changed", dto, ct);
-        response.EnsureSuccessStatusCode();
+        var url = "/internal/receipts/status-changed";
+        _logger.LogCritical("➡️ POST {Base}{Url}", client.BaseAddress, url);
+        _logger.LogCritical("➡️ DTO: {Dto}", JsonSerializer.Serialize(dto));
+
+        var response = await client.PostAsJsonAsync(url, dto, ct);
+
+        var body = await response.Content.ReadAsStringAsync(ct);
+        _logger.LogCritical("⬅️ Realtime RESP Status={StatusCode}", (int)response.StatusCode);
+        _logger.LogCritical("⬅️ Realtime RESP Body={Body}", body);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            // burada patlat ki stacktrace kalsın ama body de logda olsun
+            throw new HttpRequestException(
+                $"Realtime notify failed. Status={(int)response.StatusCode}. Body={body}");
+        }
 
         _logger.LogInformation("Realtime notified for receipt {Id}", receipt.Id);
     }
