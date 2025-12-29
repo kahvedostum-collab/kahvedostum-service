@@ -139,6 +139,7 @@ public sealed class ResultsConsumer : BackgroundService
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
                 var receipt = await db.Receipts
+                    .Include(r => r.User)
                     .Include(r => r.Lines)
                     .FirstOrDefaultAsync(r => r.Id == msg.ReceiptId, stoppingToken);
 
@@ -514,7 +515,10 @@ public sealed class ResultsConsumer : BackgroundService
         {
             CafeId = receipt.CafeId.Value,
             UserId = receipt.UserId,
-            ReceiptId = receipt.Id
+            ReceiptId = receipt.Id,
+
+            FullName = $"{receipt.User.FirstName} {receipt.User.LastName}",
+            ProfileImageUrl = receipt.User.PhotoUrl
         };
 
         var response = await client.PostAsJsonAsync(
