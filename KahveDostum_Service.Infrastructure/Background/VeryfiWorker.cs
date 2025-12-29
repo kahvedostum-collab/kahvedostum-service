@@ -1,6 +1,8 @@
 ﻿using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using KahveDostum_Service.Application.Dtos;
 using KahveDostum_Service.Infrastructure.Options;
 using Microsoft.Extensions.Hosting;
@@ -32,6 +34,13 @@ public sealed class VerifyReceiptWorker : BackgroundService
     private const ushort PrefetchCount = 50;
     private const int MaxAttempts = 3;
     private const string AttemptHeaderKey = "attempt";
+
+    // Concurrency: aynı anda en fazla 50 job
+    private const int MaxConcurrentJobs = 50;
+    private readonly SemaphoreSlim _concurrencySemaphore = new(MaxConcurrentJobs, MaxConcurrentJobs);
+
+    // RabbitMQ channel için tek şerit (ACK + Publish)
+    private readonly SemaphoreSlim _channelSemaphore = new(1, 1);
 
     public VerifyReceiptWorker(
         IOptions<RabbitOptions> opt,
@@ -123,6 +132,7 @@ public sealed class VerifyReceiptWorker : BackgroundService
             arguments: null,
             cancellationToken: stoppingToken);
 
+        // Prefetch
         await _channel.BasicQosAsync(0, PrefetchCount, false, cancellationToken: stoppingToken);
 
         _logger.LogInformation(
@@ -135,20 +145,39 @@ public sealed class VerifyReceiptWorker : BackgroundService
         {
             _logger.LogCritical("📥 VERIFY JOB MESSAGE RECEIVED");
 
-            try
+            // MaxConcurrentJobs kadar job aynı anda
+            await _concurrencySemaphore.WaitAsync(stoppingToken);
+
+            _ = Task.Run(async () =>
             {
-                await HandleJobAsync(ea, stoppingToken);
-                await _channel.BasicAckAsync(ea.DeliveryTag, false, cancellationToken: stoppingToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "VerifyReceiptWorker message handling error");
                 try
                 {
-                    await HandleErrorAsync(ea, ex, stoppingToken);
+                    try
+                    {
+                        await HandleJobAsync(ea, stoppingToken);
+
+                        // İş başarıyla bittiyse ACK
+                        await SafeAckAsync(ea.DeliveryTag, stoppingToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "VerifyReceiptWorker message handling error");
+
+                        try
+                        {
+                            await HandleErrorAsync(ea, ex, stoppingToken);
+                        }
+                        catch (Exception inner)
+                        {
+                            _logger.LogError(inner, "HandleErrorAsync failed");
+                        }
+                    }
                 }
-                catch { }
-            }
+                finally
+                {
+                    _concurrencySemaphore.Release();
+                }
+            }, stoppingToken);
         };
 
         await _channel.BasicConsumeAsync(
@@ -188,94 +217,79 @@ public sealed class VerifyReceiptWorker : BackgroundService
             msg.JobId, msg.ReceiptId, msg.Bucket, msg.ObjectKey, attempt);
 
         var started = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-// 1) MinIO'dan dosyayı indir
-var fileBytes = await DownloadFromMinioAsync(msg.Bucket, msg.ObjectKey, ct);
 
-// 1) MinIO'dan dosya indirildi: fileBytes
+        // 1) MinIO'dan dosyayı indir
+        var fileBytes = await DownloadFromMinioAsync(msg.Bucket, msg.ObjectKey, ct);
 
-// 2) Base64'e çevir
-var fileDataBase64 = Convert.ToBase64String(fileBytes);
+        // 2) Base64'e çevir
+        var fileDataBase64 = Convert.ToBase64String(fileBytes);
 
-// 3) Veryfi payload’u
-var payload = new
-{
-    file_data = fileDataBase64,
-    file_name = Path.GetFileName(msg.ObjectKey),
-    categories = Array.Empty<string>(),
-    tags = Array.Empty<string>(),
-    compute = true,
-    country = "TR",
-    document_type = "receipt"
-};
+        // 3) Veryfi payload’u
+        var payload = new
+        {
+            file_data = fileDataBase64,
+            file_name = Path.GetFileName(msg.ObjectKey),
+            categories = Array.Empty<string>(),
+            tags = Array.Empty<string>(),
+            compute = true,
+            country = "TR",
+            document_type = "receipt"
+        };
 
-var payloadJson = JsonSerializer.Serialize(payload);
+        var payloadJson = JsonSerializer.Serialize(payload);
 
-// 4) Dokümandaki C# örneğinin birebir HttpClient versiyonu
-using var client = new HttpClient();
+        // 4) HttpClient (factory'den)
+        var client = _httpClientFactory.CreateClient("veryfi");
 
-// URL: appsettings’ten geliyor
-var request = new HttpRequestMessage(
-    HttpMethod.Post,
-    $"{_veryfi.BaseUrl.TrimEnd('/')}/documents");
+        var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"{_veryfi.BaseUrl.TrimEnd('/')}/documents");
 
-// Accept: application/json
-request.Headers.Accept.Clear();
-request.Headers.Accept.Add(
-    new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.Accept.Clear();
+        request.Headers.Accept.Add(
+            new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
 
-// CLIENT-ID: appsettings
-request.Headers.Add("CLIENT-ID", _veryfi.ClientId);
+        request.Headers.Add("CLIENT-ID", _veryfi.ClientId);
 
-// Authorization: apikey username:apikey
-// Burada STRONGLY-TYPED Authorization header kullanıyoruz
-request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
-    "apikey",
-    $"{_veryfi.Username}:{_veryfi.ApiKey}"
-);
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+            "apikey",
+            $"{_veryfi.Username}:{_veryfi.ApiKey}");
 
-// Body: application/json
-request.Content = new StringContent(payloadJson, Encoding.UTF8, "application/json");
-// İstersen charset'i de dokümandaki gibi kapatabilirsin:
-// request.Content.Headers.ContentType!.CharSet = "";
+        request.Content = new StringContent(payloadJson, Encoding.UTF8, "application/json");
 
-_logger.LogInformation("🌐 Calling Veryfi for receiptId={ReceiptId}", msg.ReceiptId);
+        _logger.LogInformation("🌐 Calling Veryfi for receiptId={ReceiptId}", msg.ReceiptId);
 
-// Request gönder
-var response = await client.SendAsync(request, ct);
-var respBody = await response.Content.ReadAsStringAsync(ct);
+        var response = await client.SendAsync(request, ct);
+        var respBody = await response.Content.ReadAsStringAsync(ct);
 
-_logger.LogCritical("Veryfi response status={StatusCode}", (int)response.StatusCode);
-_logger.LogCritical("Veryfi response body={Body}", respBody);
+        _logger.LogCritical("Veryfi response status={StatusCode}", (int)response.StatusCode);
+        _logger.LogCritical("Veryfi response body={Body}", respBody);
 
-// 2xx değilse fırlat, retry mekanizması çalışsın
-response.EnsureSuccessStatusCode();
+        response.EnsureSuccessStatusCode();
 
-// JSON'u sakla
-var root = JsonSerializer.Deserialize<JsonElement>(respBody);
+        var root = JsonSerializer.Deserialize<JsonElement>(respBody);
 
-var finished = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var finished = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-var result = new OcrResultMessage
-{
-    JobId = msg.JobId,
-    ReceiptId = msg.ReceiptId,
-    ChannelKey = msg.ChannelKey,
-    Status = "DONE",
-    Attempt = attempt,
-    Started = started,
-    Finished = finished,
-    Bucket = msg.Bucket,
-    ObjectKey = msg.ObjectKey,
-    Payload = root
-};
+        var result = new OcrResultMessage
+        {
+            JobId = msg.JobId,
+            ReceiptId = msg.ReceiptId,
+            ChannelKey = msg.ChannelKey,
+            Status = "DONE",
+            Attempt = attempt,
+            Started = started,
+            Finished = finished,
+            Bucket = msg.Bucket,
+            ObjectKey = msg.ObjectKey,
+            Payload = root
+        };
 
-await PublishResultAsync(result, ct);
+        await PublishResultAsync(result, ct);
 
-_logger.LogCritical(
-    "✅ JOB DONE jobId={JobId} receiptId={ReceiptId} elapsed={Elapsed}ms",
-    result.JobId, result.ReceiptId, result.Elapsed);
-
-
+        _logger.LogCritical(
+            "✅ JOB DONE jobId={JobId} receiptId={ReceiptId} elapsed={Elapsed}ms",
+            result.JobId, result.ReceiptId, result.Elapsed);
     }
 
     // ---- ATTEMPT OKUMA ----
@@ -292,7 +306,10 @@ _logger.LogCritical(
                     return attempt;
             }
         }
-        catch { }
+        catch
+        {
+            // ignore
+        }
 
         return 1;
     }
@@ -309,6 +326,7 @@ _logger.LogCritical(
             "Verify job failed attempt={Attempt} corrId={CorrelationId}",
             attempt, corrId);
 
+        // Max deneme sayısını geçtiyse DLQ'ya at
         if (attempt >= MaxAttempts)
         {
             var dlqPayload = new
@@ -330,15 +348,9 @@ _logger.LogCritical(
                 CorrelationId = corrId
             };
 
-            await _channel.BasicPublishAsync(
-                exchange: _opt.Exchange,
-                routingKey: DlqRoutingKey,
-                mandatory: false,
-                basicProperties: props,
-                body: dlqBody,
-                cancellationToken: ct);
-
-            await _channel.BasicAckAsync(ea.DeliveryTag, false, cancellationToken: ct);
+            // Önce DLQ'ya publish, sonra ACK (duplicate > loss)
+            await SafePublishAsync(DlqRoutingKey, dlqBody, props, ct);
+            await SafeAckAsync(ea.DeliveryTag, ct);
 
             _logger.LogCritical("❌ Sent job to DLQ after {Attempt} attempts corrId={CorrelationId}",
                 attempt, corrId);
@@ -346,6 +358,7 @@ _logger.LogCritical(
             return;
         }
 
+        // Retry
         var headers = ea.BasicProperties?.Headers != null
             ? new Dictionary<string, object>(ea.BasicProperties.Headers)
             : new Dictionary<string, object>();
@@ -360,15 +373,10 @@ _logger.LogCritical(
             Headers = headers
         };
 
-        await _channel.BasicAckAsync(ea.DeliveryTag, false, cancellationToken: ct);
-
-        await _channel.BasicPublishAsync(
-            exchange: _opt.Exchange,
-            routingKey: JobsRoutingKey,
-            mandatory: false,
-            basicProperties: retryProps,
-            body: ea.Body,
-            cancellationToken: ct);
+        // Önce tekrar kuyruğa publish, sonra ACK
+        var retryBody = ea.Body.ToArray();
+        await SafePublishAsync(JobsRoutingKey, retryBody, retryProps, ct);
+        await SafeAckAsync(ea.DeliveryTag, ct);
 
         _logger.LogWarning(
             "🔁 Republished job for retry nextAttempt={Attempt} corrId={CorrelationId}",
@@ -376,7 +384,7 @@ _logger.LogCritical(
     }
 
     // ---- RESULT PUBLISH ----
-    private async Task PublishResultAsync(Application.Dtos.OcrResultMessage result, CancellationToken ct)
+    private async Task PublishResultAsync(OcrResultMessage result, CancellationToken ct)
     {
         if (_channel is null) return;
 
@@ -390,14 +398,50 @@ _logger.LogCritical(
             CorrelationId = result.JobId
         };
 
-        await _channel.BasicPublishAsync(
-            exchange: _opt.Exchange,
-            routingKey: _opt.ResultsRoutingKey,
-            mandatory: false,
-            basicProperties: props,
-            body: body,
-            cancellationToken: ct);
+        await SafePublishAsync(_opt.ResultsRoutingKey, body, props, ct);
     }
+
+    // ---- SAFE ACK ----
+    private async Task SafeAckAsync(ulong deliveryTag, CancellationToken ct)
+    {
+        if (_channel is null) return;
+
+        await _channelSemaphore.WaitAsync(ct);
+        try
+        {
+            await _channel.BasicAckAsync(
+                deliveryTag: deliveryTag,
+                multiple: false,
+                cancellationToken: ct);
+        }
+        finally
+        {
+            _channelSemaphore.Release();
+        }
+    }
+
+    // ---- SAFE PUBLISH ----
+    private async Task SafePublishAsync(string routingKey, byte[] body, BasicProperties props, CancellationToken ct)
+    {
+        if (_channel is null) return;
+
+        await _channelSemaphore.WaitAsync(ct);
+        try
+        {
+            await _channel.BasicPublishAsync(
+                exchange: _opt.Exchange,
+                routingKey: routingKey,
+                mandatory: false,
+                basicProperties: props,
+                body: body,
+                cancellationToken: ct);
+        }
+        finally
+        {
+            _channelSemaphore.Release();
+        }
+    }
+
 
     // ---- MinIO ----
     private async Task<byte[]> DownloadFromMinioAsync(string bucket, string objectKey, CancellationToken ct)
@@ -440,8 +484,19 @@ _logger.LogCritical(
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        try { if (_channel is not null) await _channel.CloseAsync(cancellationToken: cancellationToken); } catch { }
-        try { if (_connection is not null) await _connection.CloseAsync(cancellationToken: cancellationToken); } catch { }
+        try
+        {
+            if (_channel is not null)
+                await _channel.CloseAsync(cancellationToken: cancellationToken);
+        }
+        catch { }
+
+        try
+        {
+            if (_connection is not null)
+                await _connection.CloseAsync(cancellationToken: cancellationToken);
+        }
+        catch { }
 
         await base.StopAsync(cancellationToken);
     }
