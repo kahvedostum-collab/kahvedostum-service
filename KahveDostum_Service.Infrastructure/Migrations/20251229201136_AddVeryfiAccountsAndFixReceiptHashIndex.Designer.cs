@@ -4,6 +4,7 @@ using KahveDostum_Service.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace KahveDostum_Service.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251229201136_AddVeryfiAccountsAndFixReceiptHashIndex")]
+    partial class AddVeryfiAccountsAndFixReceiptHashIndex
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -69,7 +72,7 @@ namespace KahveDostum_Service.Infrastructure.Migrations
 
                     b.HasIndex("CompanyId");
 
-                    b.ToTable("Cafes", (string)null);
+                    b.ToTable("Cafes");
                 });
 
             modelBuilder.Entity("KahveDostum_Service.Domain.Entities.CafeActivationToken", b =>
@@ -117,7 +120,7 @@ namespace KahveDostum_Service.Infrastructure.Migrations
 
                     b.HasIndex("CafeId", "IsUsed");
 
-                    b.ToTable("CafeActivationTokens", (string)null);
+                    b.ToTable("CafeActivationTokens");
                 });
 
             modelBuilder.Entity("KahveDostum_Service.Domain.Entities.Company", b =>
@@ -147,7 +150,7 @@ namespace KahveDostum_Service.Infrastructure.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("Companies", (string)null);
+                    b.ToTable("Companies");
                 });
 
             modelBuilder.Entity("KahveDostum_Service.Domain.Entities.Conversation", b =>
@@ -163,7 +166,7 @@ namespace KahveDostum_Service.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Conversations", (string)null);
+                    b.ToTable("Conversations");
                 });
 
             modelBuilder.Entity("KahveDostum_Service.Domain.Entities.ConversationParticipant", b =>
@@ -190,7 +193,7 @@ namespace KahveDostum_Service.Infrastructure.Migrations
                     b.HasIndex("ConversationId", "UserId")
                         .IsUnique();
 
-                    b.ToTable("ConversationParticipants", (string)null);
+                    b.ToTable("ConversationParticipants");
                 });
 
             modelBuilder.Entity("KahveDostum_Service.Domain.Entities.FriendRequest", b =>
@@ -222,7 +225,7 @@ namespace KahveDostum_Service.Infrastructure.Migrations
 
                     b.HasIndex("FromUserId", "ToUserId", "Status");
 
-                    b.ToTable("FriendRequests", (string)null);
+                    b.ToTable("FriendRequests");
                 });
 
             modelBuilder.Entity("KahveDostum_Service.Domain.Entities.Friendship", b =>
@@ -249,7 +252,7 @@ namespace KahveDostum_Service.Infrastructure.Migrations
                     b.HasIndex("UserId", "FriendUserId")
                         .IsUnique();
 
-                    b.ToTable("Friendships", (string)null);
+                    b.ToTable("Friendships");
                 });
 
             modelBuilder.Entity("KahveDostum_Service.Domain.Entities.Message", b =>
@@ -288,7 +291,7 @@ namespace KahveDostum_Service.Infrastructure.Migrations
 
                     b.HasIndex("ConversationId", "CreatedAt");
 
-                    b.ToTable("Messages", (string)null);
+                    b.ToTable("Messages");
                 });
 
             modelBuilder.Entity("KahveDostum_Service.Domain.Entities.MessageReceipt", b =>
@@ -318,7 +321,7 @@ namespace KahveDostum_Service.Infrastructure.Migrations
                     b.HasIndex("MessageId", "UserId")
                         .IsUnique();
 
-                    b.ToTable("MessageReceipts", (string)null);
+                    b.ToTable("MessageReceipts");
                 });
 
             modelBuilder.Entity("KahveDostum_Service.Domain.Entities.Receipt", b =>
@@ -484,7 +487,7 @@ namespace KahveDostum_Service.Infrastructure.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("RefreshTokens", (string)null);
+                    b.ToTable("RefreshTokens");
                 });
 
             modelBuilder.Entity("KahveDostum_Service.Domain.Entities.User", b =>
@@ -539,7 +542,7 @@ namespace KahveDostum_Service.Infrastructure.Migrations
                     b.HasIndex("UserName")
                         .IsUnique();
 
-                    b.ToTable("Users", (string)null);
+                    b.ToTable("Users");
                 });
 
             modelBuilder.Entity("KahveDostum_Service.Domain.Entities.UserSession", b =>
@@ -576,7 +579,7 @@ namespace KahveDostum_Service.Infrastructure.Migrations
 
                     b.HasIndex("UserId", "CafeId", "Status");
 
-                    b.ToTable("UserSessions", (string)null);
+                    b.ToTable("UserSessions");
                 });
 
             modelBuilder.Entity("KahveDostum_Service.Domain.Entities.VeryfiAccount", b =>

@@ -29,7 +29,6 @@ public class ReceiptRepository : Repository<Receipt>, IReceiptRepository
             .FirstOrDefaultAsync(r => r.Id == receiptId && r.UserId == userId);
     }
 
-    // Aynı cafe için "yakın zamanda fiş var mı?" kontrolü:
     // INIT/PROCESSING sayma, sadece DONE say.
     public async Task<bool> HasRecentReceiptAsync(int userId, int cafeId, DateTime sinceUtc)
     {

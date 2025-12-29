@@ -40,8 +40,6 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.Configure<MinioOptions>(builder.Configuration.GetSection("Minio"));
 builder.Services.Configure<RabbitOptions>(builder.Configuration.GetSection("Rabbit"));
 builder.Services.Configure<RealtimeOptions>(builder.Configuration.GetSection("Realtime"));
-builder.Services.Configure<VeryfiOptions>(
-    builder.Configuration.GetSection("Veryfi"));
 
 // ---------------------------
 // JWT

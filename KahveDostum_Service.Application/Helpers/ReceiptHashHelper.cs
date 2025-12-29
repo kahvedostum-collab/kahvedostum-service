@@ -16,12 +16,12 @@ public static class ReceiptHashHelper
 
         if (!string.IsNullOrWhiteSpace(receiptNo))
         {
-            // 🥇 En güvenilir
-            raw = $"{taxNumber}|{receiptNo}|{receiptDate:yyyyMMdd}";
+           // VergiNo + FişNo + Tarih + Total
+            raw = $"{taxNumber}|{receiptNo}|{receiptDate:yyyyMMdd}|{total}";
         }
         else
         {
-            // 🛟 Fallback
+            // 🛟 Fallback (fiş no yoksa)
             var rawTextHash = string.IsNullOrWhiteSpace(rawText)
                 ? "NO_TEXT"
                 : Convert.ToHexString(
@@ -34,5 +34,4 @@ public static class ReceiptHashHelper
         return Convert.ToHexString(
             sha.ComputeHash(Encoding.UTF8.GetBytes(raw)));
     }
-
 }

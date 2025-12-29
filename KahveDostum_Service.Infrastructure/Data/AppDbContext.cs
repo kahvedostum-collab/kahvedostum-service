@@ -23,7 +23,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
     public DbSet<ReceiptOcrResult> ReceiptOcrResults => Set<ReceiptOcrResult>();
 
-
+    public DbSet<VeryfiAccount> VeryfiAccounts => Set<VeryfiAccount>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -163,26 +163,26 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.Property(r => r.Brand).HasMaxLength(255);
             entity.Property(r => r.ReceiptNo).HasMaxLength(100);
 
-            // ✅ INIT'te boş olacağı için required KALDIRILDI
             entity.Property(r => r.Total).HasMaxLength(50);
-
             entity.Property(r => r.City).HasMaxLength(100);
             entity.Property(r => r.District).HasMaxLength(100);
             entity.Property(r => r.Address).HasMaxLength(500);
 
             entity.Property(r => r.RawText);
 
-            // ✅ INIT'te boş olacağı için required KALDIRILDI
             entity.Property(r => r.ReceiptDate);
 
             entity.Property(r => r.CreatedAt)
                 .HasDefaultValueSql("GETUTCDATE()");
 
-            // ✅ INIT'te boş olacağı için required KALDIRILDI
+            // 🔹 Hash nullable, INIT/UPLOADED'da boş kalabilir
             entity.Property(r => r.ReceiptHash)
                 .HasMaxLength(64);
 
-            entity.HasIndex(r => r.ReceiptHash).IsUnique();
+            // ❗ SADECE BU INDEX OLSUN
+            entity.HasIndex(r => r.ReceiptHash)
+                .IsUnique()
+                .HasFilter("[ReceiptHash] IS NOT NULL");
 
             // ===== Pipeline alanları =====
             entity.Property(r => r.Status)
@@ -208,7 +208,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasIndex(r => new { r.UserId, r.CafeId, r.CreatedAt });
         });
 
-        
 
         // RECEIPT LINE
         modelBuilder.Entity<ReceiptLine>(entity =>
@@ -300,6 +299,44 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             // performans
             entity.HasIndex(x => x.ReceiptId);
             entity.HasIndex(x => x.CreatedAt);
+        });
+        
+        // VERYFI ACCOUNT
+        modelBuilder.Entity<VeryfiAccount>(entity =>
+        {
+            entity.ToTable("VeryfiAccounts");
+
+            entity.HasKey(v => v.Id);
+
+            entity.Property(v => v.BaseUrl)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(v => v.ClientId)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(v => v.Username)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(v => v.ApiKey)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(v => v.UsedCount)
+                .HasDefaultValue(0);
+
+            entity.Property(v => v.UsageLimit)
+                .HasDefaultValue(100);
+
+            entity.Property(v => v.IsActive)
+                .HasDefaultValue(true);
+
+            entity.Property(v => v.CreatedAt)
+                .HasDefaultValueSql("GETUTCDATE()");
+
+            entity.HasIndex(v => new { v.IsActive, v.UsedCount });
         });
 
 

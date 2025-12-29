@@ -1,11 +1,8 @@
-using System.Text.Json;
 using KahveDostum_Service.Application.Dtos;
 using KahveDostum_Service.Application.Helpers;
 using KahveDostum_Service.Application.Interfaces;
 using KahveDostum_Service.Domain.Entities;
-using KahveDostum_Service.Application.Interfaces;
 using KahveDostum_Service.Domain.Interfaces;
-
 
 namespace KahveDostum_Service.Application.Services;
 
@@ -32,24 +29,16 @@ public class ReceiptService : IReceiptService
     }
 
     // 1) INIT: receipt oluştur + presigned url dön
-    public async Task<ReceiptInitResponseDto> InitAsync(int userId, ReceiptInitRequestDto dto)
+    // Init: sadece upload oturumu açar. CafeId burada set edilmez.
+    public async Task<ReceiptInitResponseDto> InitAsync(int userId)
     {
-        if (dto.CafeId.HasValue)
-        {
-            var cafe = await _uow.Cafes.GetByIdAsync(dto.CafeId.Value);
-            if (cafe == null)
-                throw new ArgumentException("Cafe bulunamadı.");
-        }
-
-        // 🔴 Her fiş için uniq channel
+        // Her fiş için uniq channel
         var channelKey = Guid.NewGuid().ToString("N");
 
         var receipt = new Receipt
         {
             UserId = userId,
-            CafeId = dto.CafeId,
-            ClientLat = dto.Lat,
-            ClientLng = dto.Lng,
+            // CafeId = null (OCR sonrası belirlenecek)
             Status = ReceiptStatus.INIT,
             CreatedAt = DateTime.UtcNow,
             ChannelKey = channelKey
@@ -69,23 +58,23 @@ public class ReceiptService : IReceiptService
 
         receipt.Bucket = bucket;
         receipt.ObjectKey = objectKey;
-        receipt.UploadedAt = DateTime.UtcNow;
+        // UploadedAt burada set edilmez; upload bittikten sonra Complete'de set edilecek
 
         await _uow.SaveChangesAsync();
 
         return new ReceiptInitResponseDto
         {
             ReceiptId = receipt.Id,
-            ChannelKey = channelKey,     
+            ChannelKey = channelKey,
             Bucket = bucket,
             ObjectKey = objectKey,
             UploadUrl = uploadUrl
         };
     }
 
-
-
-    // 2) COMPLETE: upload bitti -> job bas + status PROCESSING
+    // 2) COMPLETE:
+    //  - Upload bitti -> Status = UPLOADED
+    //  - Job kuyruğa verildi -> Status = PROCESSING
     public async Task<ReceiptCompleteResponseDto> CompleteAsync(int userId, int receiptId, ReceiptCompleteRequestDto dto)
     {
         var receipt = await _uow.Receipts.GetByIdAsync(receiptId);
@@ -95,6 +84,7 @@ public class ReceiptService : IReceiptService
         if (receipt.UserId != userId)
             throw new ArgumentException("Bu fişe erişim yok.");
 
+        // Zaten ilerlemiş durumdaysa tekrar başlatma
         if (receipt.Status is ReceiptStatus.PROCESSING or ReceiptStatus.DONE)
         {
             return new ReceiptCompleteResponseDto
@@ -104,42 +94,46 @@ public class ReceiptService : IReceiptService
             };
         }
 
+        // İstersen override imkanı
         receipt.Bucket = dto.Bucket ?? receipt.Bucket ?? DefaultBucket;
         receipt.ObjectKey = dto.ObjectKey ?? receipt.ObjectKey;
 
         if (string.IsNullOrWhiteSpace(receipt.ObjectKey))
             throw new ArgumentException("ObjectKey boş. Önce init + upload yapmalısın.");
 
-        receipt.Status = ReceiptStatus.PROCESSING;
+        // 1️⃣ Upload tamamlandı → UPLOADED
+        receipt.Status = ReceiptStatus.UPLOADED;
         receipt.UploadedAt ??= DateTime.UtcNow;
 
+        await _uow.SaveChangesAsync(); // DB'de gerçekten UPLOADED olarak görünür
+
+        // 2️⃣ Job hazırla
         var jobId = Guid.NewGuid().ToString("N");
         receipt.OcrJobId = jobId;
-
-        await _uow.SaveChangesAsync();
 
         var job = new OcrJobMessage
         {
             JobId = jobId,
             ReceiptId = receipt.Id,
             UserId = receipt.UserId,
-            CafeId = receipt.CafeId,
             Bucket = receipt.Bucket!,
             ObjectKey = receipt.ObjectKey!,
-            ClientLat = receipt.ClientLat,
-            ClientLng = receipt.ClientLng,
-            ChannelKey = receipt.ChannelKey    // 🔴 buradan worker’a gidecek
+            ChannelKey = receipt.ChannelKey
         };
 
+        // 3️⃣ Job kuyruğa ver
         await _publisher.PublishAsync(job);
+
+        // 4️⃣ Job kuyruğa başarıyla verildiyse → PROCESSING
+        receipt.Status = ReceiptStatus.PROCESSING;
+        await _uow.SaveChangesAsync();
 
         return new ReceiptCompleteResponseDto
         {
             ReceiptId = receipt.Id,
-            Status = "PROCESSING"
+            Status = receipt.Status.ToString() // "PROCESSING"
         };
     }
-
 
     // 3) STATUS: receipt + varsa son ocr result
     public async Task<ReceiptStatusResponseDto> GetStatusAsync(int userId, int receiptId)
@@ -159,6 +153,25 @@ public class ReceiptService : IReceiptService
             Status = receipt.Status.ToString(),
             Result = ocrResult
         };
+    }
+
+    public async Task<List<ReceiptListItemDto>> GetMyReceiptsAsync(int userId)
+    {
+        var receipts = await _uow.Receipts.GetByUserIdAsync(userId);
+
+        return receipts
+            .OrderByDescending(r => r.CreatedAt)
+            .Select(r => new ReceiptListItemDto
+            {
+                Id = r.Id,
+                Status = r.Status.ToString(),
+                CreatedAt = r.CreatedAt,
+                UploadedAt = r.UploadedAt,
+                ReceiptDate = r.ReceiptDate,
+                Total = r.Total,
+                CafeId = r.CafeId
+            })
+            .ToList();
     }
 
     // Eski scan akışı (manual input) aynen kalsın
