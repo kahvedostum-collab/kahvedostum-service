@@ -2,6 +2,8 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Globalization;
+using System.Net.Http;
+using KahveDostum_Service.Application.Helpers; 
 using KahveDostum_Service.Domain.Entities;
 using KahveDostum_Service.Infrastructure.Data;
 using KahveDostum_Service.Infrastructure.Options;
@@ -12,7 +14,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using System.Net.Http;
 
 namespace KahveDostum_Service.Infrastructure.Background;
 
@@ -270,6 +271,39 @@ public sealed class ResultsConsumer : BackgroundService
                 }
 
                 // -----------------------------------------------------------------
+                // 2.5) DUPLICATE CHECK (aynı fiş daha önce kullanılmış mı?)
+                // -----------------------------------------------------------------
+                string? receiptHash = null;
+
+                if (!string.IsNullOrWhiteSpace(taxNumber) &&
+                    !string.IsNullOrWhiteSpace(totalStr) &&
+                    receiptDate.HasValue)
+                {
+                    receiptHash = ReceiptHashHelper.Generate(
+                        taxNumber,
+                        totalStr,
+                        receiptDate.Value,
+                        receiptNo,
+                        receipt.RawText
+                    );
+
+                    // Bu fişin hash'ini de kaydet
+                    receipt.ReceiptHash = receiptHash;
+
+                    var duplicateExists = await db.Receipts
+                        .AnyAsync(r =>
+                            r.ReceiptHash == receiptHash &&
+                            r.Id != receipt.Id, // kendisini hariç tut
+                            stoppingToken);
+
+                    if (duplicateExists)
+                    {
+                        isValid = false;
+                        rejectReasons.Add("Bu fiş daha önce kullanılmış.");
+                    }
+                }
+
+                // -----------------------------------------------------------------
                 // 3) Cafe bul / yoksa oluştur
                 // -----------------------------------------------------------------
                 Cafe? cafe = null;
@@ -289,7 +323,7 @@ public sealed class ResultsConsumer : BackgroundService
                             Address = address ?? string.Empty,
                             NormalizedAddress = NormalizeAddress(address),
                             Description = "Veryfi fişinden otomatik oluşturuldu.",
-                            Latitude = null,     // İleride ClientLat/ClientLng ile doldurabilirsin
+                            Latitude = null,
                             Longitude = null,
                             IsActive = true,
                             CreatedAt = DateTime.UtcNow
@@ -313,6 +347,7 @@ public sealed class ResultsConsumer : BackgroundService
 
                     receipt.Status = ReceiptStatus.DONE;
                     receipt.ProcessedAt = DateTime.UtcNow;
+                    receipt.RejectReason = null; // 🔑 başarılıysa önceki hataları temizle
 
                     if (!string.IsNullOrWhiteSpace(brand))
                         receipt.Brand = brand;
@@ -340,6 +375,7 @@ public sealed class ResultsConsumer : BackgroundService
                     receipt.Status = ReceiptStatus.FAILED;
                     receipt.ProcessedAt = DateTime.UtcNow;
 
+                    // Hem worker hatası hem validation (duplicate dahil) reason'larını birleştir
                     var reason = msg.Error;
                     if (rejectReasons.Count > 0)
                     {
@@ -458,7 +494,6 @@ public sealed class ResultsConsumer : BackgroundService
             .Replace("\n", " ");
     }
 
-    // Cafe aktiflik verme – senin eski kodun (hiç değiştirmedim)
     private async Task GrantCafeActiveAsync(Receipt receipt, CancellationToken ct)
     {
         if (!receipt.CafeId.HasValue)
@@ -495,7 +530,6 @@ public sealed class ResultsConsumer : BackgroundService
             receipt.Id, receipt.CafeId.Value, receipt.UserId);
     }
 
-    // Realtime notify – senin eski kodun (ufak oynamadan kopyaladım)
     private async Task NotifyRealtimeAsync(OcrResultMessage msg, Receipt receipt, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(_rtOpt.BaseUrl))
@@ -504,7 +538,6 @@ public sealed class ResultsConsumer : BackgroundService
             return;
         }
 
-        // channelKey yoksa DB'den al (msg.ChannelKey boş gelebilir)
         var channelKey = msg.ChannelKey;
         if (string.IsNullOrWhiteSpace(channelKey))
             channelKey = receipt.ChannelKey;
@@ -527,7 +560,7 @@ public sealed class ResultsConsumer : BackgroundService
         {
             receiptId = receipt.Id,
             channelKey = channelKey,
-            status = receipt.Status.ToString(),       // DONE / FAILED
+            status = receipt.Status.ToString(),
             rejectReason = receipt.RejectReason,
             total = receipt.Total,
             brand = receipt.Brand

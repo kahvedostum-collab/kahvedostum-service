@@ -4,7 +4,11 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using KahveDostum_Service.Application.Dtos;
+using KahveDostum_Service.Domain.Entities;
+using KahveDostum_Service.Infrastructure.Data;
 using KahveDostum_Service.Infrastructure.Options;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -18,11 +22,10 @@ namespace KahveDostum_Service.Infrastructure.Background;
 public sealed class VerifyReceiptWorker : BackgroundService
 {
     private readonly RabbitOptions _opt;
-    private readonly VeryfiOptions _veryfi;
     private readonly MinioOptions _minio;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<VerifyReceiptWorker> _logger;
-
+    private readonly IServiceScopeFactory _scopeFactory;  
     private IConnection? _connection;
     private IChannel? _channel;
 
@@ -42,19 +45,20 @@ public sealed class VerifyReceiptWorker : BackgroundService
     // RabbitMQ channel için tek şerit (ACK + Publish)
     private readonly SemaphoreSlim _channelSemaphore = new(1, 1);
 
-    public VerifyReceiptWorker(
-        IOptions<RabbitOptions> opt,
-        IOptions<VeryfiOptions> veryfi,
-        IOptions<MinioOptions> minio,
-        IHttpClientFactory httpClientFactory,
-        ILogger<VerifyReceiptWorker> logger)
-    {
-        _opt = opt.Value;
-        _veryfi = veryfi.Value;
-        _minio = minio.Value;
-        _httpClientFactory = httpClientFactory;
-        _logger = logger;
-    }
+   public VerifyReceiptWorker(
+       IOptions<RabbitOptions> opt,
+       IOptions<MinioOptions> minio,
+       IHttpClientFactory httpClientFactory,
+       IServiceScopeFactory scopeFactory,
+       ILogger<VerifyReceiptWorker> logger)
+   {
+       _opt = opt.Value;
+       _minio = minio.Value;
+       _httpClientFactory = httpClientFactory;
+       _scopeFactory = scopeFactory;
+       _logger = logger;
+   }
+
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -238,34 +242,69 @@ public sealed class VerifyReceiptWorker : BackgroundService
 
         var payloadJson = JsonSerializer.Serialize(payload);
 
-        // 4) HttpClient (factory'den)
+        // 4) DB'den uygun Veryfi hesabını çek
+        VeryfiAccount account;
+        using (var scope = _scopeFactory.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            account = await db.VeryfiAccounts
+                .Where(a => a.IsActive && a.UsedCount < a.UsageLimit)
+                .OrderBy(a => a.UsedCount)
+                .ThenBy(a => a.Id)
+                .FirstOrDefaultAsync(ct)
+                ?? throw new InvalidOperationException("Kullanılabilir Veryfi hesabı bulunamadı.");
+
+            // Http çağrısından SONRA sayaç arttırmak için account referansını dışarı taşıyoruz
+        }
+
+        // 5) HttpClient
         var client = _httpClientFactory.CreateClient("veryfi");
 
         var request = new HttpRequestMessage(
             HttpMethod.Post,
-            $"{_veryfi.BaseUrl.TrimEnd('/')}/documents");
+            $"{account.BaseUrl.TrimEnd('/')}/documents");
 
         request.Headers.Accept.Clear();
         request.Headers.Accept.Add(
             new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
 
-        request.Headers.Add("CLIENT-ID", _veryfi.ClientId);
+        request.Headers.Add("CLIENT-ID", account.ClientId);
 
         request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
             "apikey",
-            $"{_veryfi.Username}:{_veryfi.ApiKey}");
+            $"{account.Username}:{account.ApiKey}");
 
         request.Content = new StringContent(payloadJson, Encoding.UTF8, "application/json");
 
-        _logger.LogInformation("🌐 Calling Veryfi for receiptId={ReceiptId}", msg.ReceiptId);
+        _logger.LogInformation("🌐 Calling Veryfi for receiptId={ReceiptId} using VeryfiAccountId={AccountId}", msg.ReceiptId, account.Id);
 
         var response = await client.SendAsync(request, ct);
         var respBody = await response.Content.ReadAsStringAsync(ct);
 
         _logger.LogCritical("Veryfi response status={StatusCode}", (int)response.StatusCode);
-        _logger.LogCritical("Veryfi response body={Body}", respBody);
+        //_logger.LogCritical("Veryfi response body={Body}", respBody);
 
-        response.EnsureSuccessStatusCode();
+        response.EnsureSuccessStatusCode(); // ✅ 200, 201 vs aldığımızdan emin olduk
+
+        // 6) Başarılı response geldiyse sayaç arttır
+        using (var scope = _scopeFactory.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+            var accToUpdate = await db.VeryfiAccounts
+                .FirstOrDefaultAsync(a => a.Id == account.Id, ct);
+
+            if (accToUpdate != null)
+            {
+                accToUpdate.UsedCount += 1;
+                accToUpdate.LastUsedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync(ct);
+
+                _logger.LogInformation(
+                    "VeryfiAccountId={AccountId} usage incremented. UsedCount={UsedCount}/{Limit}",
+                    accToUpdate.Id, accToUpdate.UsedCount, accToUpdate.UsageLimit);
+            }
+        }
 
         var root = JsonSerializer.Deserialize<JsonElement>(respBody);
 
@@ -481,7 +520,28 @@ public sealed class VerifyReceiptWorker : BackgroundService
 
         return ms.ToArray();
     }
+    
+    private async Task<VeryfiAccount> GetAvailableVeryfiAccountAsync(CancellationToken ct)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
+        // En az kullanılan, limiti dolmamış ve aktif olan hesabı seç
+        var account = await db.VeryfiAccounts
+            .Where(a => a.IsActive && a.UsedCount < a.UsageLimit)
+            .OrderBy(a => a.UsedCount)
+            .ThenBy(a => a.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (account == null)
+        {
+            throw new InvalidOperationException("Kullanılabilir Veryfi hesabı bulunamadı (UsageLimit dolu).");
+        }
+
+        return account;
+    }
+
+    
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         try

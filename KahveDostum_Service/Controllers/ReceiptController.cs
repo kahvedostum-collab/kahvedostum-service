@@ -23,9 +23,9 @@ public class ReceiptController : ControllerBase
 
     // 1️⃣ INIT → presigned upload url
     [HttpPost("init")]
-    public async Task<IActionResult> Init([FromBody] ReceiptInitRequestDto dto)
+    public async Task<IActionResult> Init()
     {
-        var result = await _service.InitAsync(GetUserId(), dto);
+        var result = await _service.InitAsync(GetUserId());
 
         return Ok(ApiResponse<ReceiptInitResponseDto>.SuccessResponse(
             result,
@@ -44,6 +44,19 @@ public class ReceiptController : ControllerBase
             result,
             "Fiş OCR kuyruğa alındı."));
     }
+    
+    // GET api/receipts
+    [HttpGet]
+    public async Task<IActionResult> GetMyReceipts()
+    {
+        var result = await _service.GetMyReceiptsAsync(GetUserId());
+
+        return Ok(ApiResponse<List<ReceiptListItemDto>>.SuccessResponse(
+            result,
+            "Kullanıcının fişleri getirildi."));
+    }
+
+    
 
     // 3️⃣ STATUS → receipt + OCR sonucu
     [HttpGet("{receiptId:int}")]
