@@ -4,4 +4,5 @@ namespace KahveDostum_Service.Application.Interfaces;
 public interface IUserService
 {
     Task<MeResponseDto> GetMeAsync(int userId);
+    Task UpdateAvatarUrlAsync(int userId, string avatarUrl);
 }

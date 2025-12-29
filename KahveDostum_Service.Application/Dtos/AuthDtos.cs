@@ -30,3 +30,9 @@ public class LogoutRequestDto
 {
     public string RefreshToken { get; set; } = default!;
 }
+public class RegisterResultDto : LoginResultDto
+{
+    public string? AvatarUploadUrl { get; set; }
+    public string? AvatarObjectKey { get; set; }
+    public string? AvatarBucket { get; set; }
+}

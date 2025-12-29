@@ -12,13 +12,15 @@ namespace KahveDostum_Service.Application.Services;
 public class AuthService(
     IUnitOfWork unitOfWork,
     ITokenService tokenService,
-    IConfiguration configuration
+    IConfiguration configuration,
+    IObjectStorage storage
 ) : IAuthService
 {
     private readonly IUnitOfWork _uow = unitOfWork;
     private readonly ITokenService _tokenService = tokenService;
+    private readonly IObjectStorage _storage = storage;
 
-    public async Task<LoginResultDto> RegisterAsync(RegisterRequestDto request)
+    public async Task<RegisterResultDto> RegisterAsync(RegisterRequestDto request)
     {
         // kullanıcı adı ve email kontrolü
         var (userNameExists, emailExists) = await _uow.Users.CheckUserConflictsAsync(request.UserName, request.Email);
@@ -50,6 +52,17 @@ public class AuthService(
 
         await _uow.Users.AddAsync(user);
         await _uow.SaveChangesAsync();
+        // avatar için presigned url
+        const string bucket = "avatars";
+        var objectKey = $"users/{user.Id}/avatar.jpg";
+
+        await _storage.EnsureBucketAsync(bucket);
+
+        var uploadUrl = await _storage.PresignPutAsync(
+            bucket,
+            objectKey,
+            expirySeconds: 300
+        );
 
         // 4) Token üretimi
         var accessToken = _tokenService.GenerateAccessToken(user);
@@ -60,10 +73,13 @@ public class AuthService(
         await _uow.SaveChangesAsync();
 
         // 5) Response
-        return new LoginResultDto
+        return new RegisterResultDto
         {
             AccessToken = accessToken,
-            RefreshToken = refreshToken.Token
+            RefreshToken = refreshToken.Token,
+            AvatarUploadUrl = uploadUrl,
+            AvatarBucket = bucket,
+            AvatarObjectKey = objectKey
         };
     }
 

@@ -27,5 +27,16 @@ public class UserService : IUserService
             AvatarUrl = user.PhotoUrl
         };
     }
+    
+    public async Task UpdateAvatarUrlAsync(int userId, string avatarUrl)
+    {
+        var user = await _uow.Users.GetByIdAsync(userId)
+                   ?? throw new InvalidOperationException("Kullanıcı bulunamadı.");
+
+        user.PhotoUrl = avatarUrl;
+        _uow.Users.Update(user);
+
+        await _uow.SaveChangesAsync();
+    }
 
 }
