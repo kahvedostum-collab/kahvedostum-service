@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Globalization;
 using KahveDostum_Service.Domain.Entities;
 using KahveDostum_Service.Infrastructure.Data;
 using KahveDostum_Service.Infrastructure.Options;
@@ -12,7 +13,6 @@ using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using System.Net.Http;
-using System.Net.Http.Json;
 
 namespace KahveDostum_Service.Infrastructure.Background;
 
@@ -41,22 +41,23 @@ public sealed class ResultsConsumer : BackgroundService
         _logger = logger;
     }
 
+    // VerifyReceiptWorker’dan gelen result mesajı DTO’su
     private sealed class OcrResultMessage
     {
         public string? JobId { get; set; }
         public int ReceiptId { get; set; }
-        public string? ChannelKey { get; set; }  
+        public string? ChannelKey { get; set; }
 
         public string? Status { get; set; }       // DONE / FAILED
-        public JsonElement? Payload { get; set; }
+        public JsonElement? Payload { get; set; } // Veryfi JSON burada
         public string? RawText { get; set; }
         public string? Error { get; set; }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        Console.WriteLine("🔥🔥 RESULTS CONSUMER EXECUTEASYNC ÇALIŞTI 🔥🔥");
-        _logger.LogCritical("🔥🔥 RESULTS CONSUMER EXECUTEASYNC ÇALIŞTI 🔥🔥");
+        Console.WriteLine("RESULTS CONSUMER EXECUTEASYNC ÇALIŞTI");
+        _logger.LogCritical("RESULTS CONSUMER EXECUTEASYNC ÇALIŞTI");
         _logger.LogInformation(
             "ResultsConsumer connecting to RabbitMQ {Host}:{Port} vhost={VHost}",
             _opt.Host, _opt.Port, _opt.VHost);
@@ -143,48 +144,58 @@ public sealed class ResultsConsumer : BackgroundService
                 if (receipt == null)
                 {
                     _logger.LogCritical("❌ RECEIPT DB'DE YOK receiptId={Id}", msg.ReceiptId);
-                }
-                else
-                {
-                    _logger.LogCritical(
-                        "✅ RECEIPT BULUNDU receiptId={Id} currentStatus={Status}",
-                        receipt.Id,
-                        receipt.Status
-                    );
-                }
-                if (receipt == null)
-                {
                     await _channel.BasicAckAsync(ea.DeliveryTag, false, cancellationToken: stoppingToken);
                     return;
                 }
 
-                // Ham raw text
-                if (!string.IsNullOrWhiteSpace(msg.RawText))
-                    receipt.RawText = msg.RawText;
+                _logger.LogCritical(
+                    "✅ RECEIPT BULUNDU receiptId={Id} currentStatus={Status}",
+                    receipt.Id,
+                    receipt.Status
+                );
 
-                // Payload içinden brand / total / tarih vs çek (varsa)
-                string? brand = null;
-                string? total = null;
-                string? receiptNo = null;
-                string? address = null;
-                DateTime? receiptDate = null;
+                // -----------------------------------------------------------------
+                // 1) Veryfi payload'ından alanları çek
+                // -----------------------------------------------------------------
+                string? brand = null;          // vendor.name
+                string? totalStr = null;       // string olarak saklanacak
+                decimal? totalAmount = null;   // numeric
+                string? receiptNo = null;      // invoice_number
+                string? address = null;        // vendor.address
+                DateTime? receiptDate = null;  // date
+                string? taxNumber = null;      // vendor.vat_number
+                string? vendorCategory = null; // vendor.category
+                string? ocrText = null;        // ocr_text
 
                 if (msg.Payload.HasValue && msg.Payload.Value.ValueKind == JsonValueKind.Object)
                 {
                     var root = msg.Payload.Value;
 
-                    if (root.TryGetProperty("brand", out var brandProp))
-                        brand = brandProp.GetString();
+                    // ocr_text
+                    if (root.TryGetProperty("ocr_text", out var ocrProp))
+                        ocrText = ocrProp.GetString();
 
+                    // total
                     if (root.TryGetProperty("total", out var totalProp))
-                        total = totalProp.GetString();
+                    {
+                        if (totalProp.ValueKind == JsonValueKind.Number &&
+                            totalProp.TryGetDecimal(out var dec))
+                        {
+                            totalAmount = dec;
+                            totalStr = dec.ToString(CultureInfo.InvariantCulture);
+                        }
+                        else if (totalProp.ValueKind == JsonValueKind.String)
+                        {
+                            var s = totalProp.GetString();
+                            totalStr = s;
+                            if (decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var dec2))
+                            {
+                                totalAmount = dec2;
+                            }
+                        }
+                    }
 
-                    if (root.TryGetProperty("receiptNo", out var noProp))
-                        receiptNo = noProp.GetString();
-
-                    if (root.TryGetProperty("address", out var addrProp))
-                        address = addrProp.GetString();
-
+                    // tarih
                     if (root.TryGetProperty("date", out var dateProp))
                     {
                         var dateStr = dateProp.GetString();
@@ -195,42 +206,159 @@ public sealed class ResultsConsumer : BackgroundService
                         }
                     }
 
-                    // Tekil hash üretmek istersen burada hesaplayabilirsin (brand+total+date vs)
+                    // invoice_number -> fiş no
+                    if (root.TryGetProperty("invoice_number", out var invProp))
+                        receiptNo = invProp.GetString();
+
+                    // vendor objesi
+                    if (root.TryGetProperty("vendor", out var vendorProp) &&
+                        vendorProp.ValueKind == JsonValueKind.Object)
+                    {
+                        if (vendorProp.TryGetProperty("name", out var nameProp))
+                            brand = nameProp.GetString();
+
+                        if (vendorProp.TryGetProperty("address", out var addrProp))
+                            address = addrProp.GetString();
+
+                        if (vendorProp.TryGetProperty("vat_number", out var vatProp))
+                            taxNumber = vatProp.GetString();
+
+                        if (vendorProp.TryGetProperty("category", out var catProp))
+                            vendorCategory = catProp.GetString();
+                    }
                 }
 
-                if (string.Equals(msg.Status, "DONE", StringComparison.OrdinalIgnoreCase))
+                // Raw text
+                if (!string.IsNullOrWhiteSpace(ocrText))
+                    receipt.RawText = ocrText;
+                else if (!string.IsNullOrWhiteSpace(msg.RawText))
+                    receipt.RawText = msg.RawText;
+
+                // -----------------------------------------------------------------
+                // 2) VALIDATION Kuralları
+                // -----------------------------------------------------------------
+                var rejectReasons = new List<string>();
+                bool isValid = true;
+
+                // coffee mi?
+                if (string.IsNullOrWhiteSpace(vendorCategory) ||
+                    !vendorCategory.Contains("coffee", StringComparison.OrdinalIgnoreCase))
                 {
-                    _logger.LogCritical("✅✅ DONE STATUS ALGILANDI receiptId={Id}", receipt.Id);
+                    isValid = false;
+                    rejectReasons.Add("Fiş bir kahve işletmesine ait görünmüyor.");
+                }
+
+                // total var mı?
+                if (totalAmount is null || totalAmount <= 0)
+                {
+                    isValid = false;
+                    rejectReasons.Add("Fişin toplam tutarı okunamadı.");
+                }
+
+                // adres
+                if (string.IsNullOrWhiteSpace(address))
+                {
+                    isValid = false;
+                    rejectReasons.Add("İşletme adresi bulunamadı.");
+                }
+
+                // vergi numarası
+                if (string.IsNullOrWhiteSpace(taxNumber))
+                {
+                    isValid = false;
+                    rejectReasons.Add("İşletmenin vergi numarası bulunamadı.");
+                }
+
+                // -----------------------------------------------------------------
+                // 3) Cafe bul / yoksa oluştur
+                // -----------------------------------------------------------------
+                Cafe? cafe = null;
+
+                if (!string.IsNullOrWhiteSpace(taxNumber))
+                {
+                    cafe = await db.Cafes
+                        .FirstOrDefaultAsync(c => c.TaxNumber == taxNumber, stoppingToken);
+
+                    if (cafe == null)
+                    {
+                        // Yeni cafe oluştur
+                        cafe = new Cafe
+                        {
+                            Name = !string.IsNullOrWhiteSpace(brand) ? brand : "Bilinmeyen Cafe",
+                            TaxNumber = taxNumber,
+                            Address = address ?? string.Empty,
+                            NormalizedAddress = NormalizeAddress(address),
+                            Description = "Veryfi fişinden otomatik oluşturuldu.",
+                            Latitude = null,     // İleride ClientLat/ClientLng ile doldurabilirsin
+                            Longitude = null,
+                            IsActive = true,
+                            CreatedAt = DateTime.UtcNow
+                        };
+
+                        await db.Cafes.AddAsync(cafe, stoppingToken);
+                        await db.SaveChangesAsync(stoppingToken); // Id almak için
+
+                        _logger.LogInformation(
+                            "🆕 Yeni cafe oluşturuldu. CafeId={CafeId}, TaxNumber={TaxNumber}, Name={Name}",
+                            cafe.Id, cafe.TaxNumber, cafe.Name);
+                    }
+                }
+
+                // -----------------------------------------------------------------
+                // 4) Receipt güncelle (DONE / FAILED)
+                // -----------------------------------------------------------------
+                if (string.Equals(msg.Status, "DONE", StringComparison.OrdinalIgnoreCase) && isValid)
+                {
+                    _logger.LogCritical("✅✅ DONE & VALID receiptId={Id}", receipt.Id);
 
                     receipt.Status = ReceiptStatus.DONE;
                     receipt.ProcessedAt = DateTime.UtcNow;
 
                     if (!string.IsNullOrWhiteSpace(brand))
                         receipt.Brand = brand;
-                    if (!string.IsNullOrWhiteSpace(total))
-                        receipt.Total = total;
+                    if (!string.IsNullOrWhiteSpace(totalStr))
+                        receipt.Total = totalStr;
                     if (!string.IsNullOrWhiteSpace(receiptNo))
                         receipt.ReceiptNo = receiptNo;
                     if (!string.IsNullOrWhiteSpace(address))
                         receipt.Address = address;
                     if (receiptDate.HasValue)
                         receipt.ReceiptDate = receiptDate;
+
+                    // Cafe set et
+                    if (cafe != null)
+                        receipt.CafeId = cafe.Id;
                 }
                 else
                 {
                     _logger.LogCritical(
-                        "⚠️ FAILED / UNKNOWN STATUS receiptId={Id} status={Status}",
+                        "⚠️ FAILED OR INVALID receiptId={Id} status={Status}",
                         receipt.Id,
                         msg.Status
                     );
+
                     receipt.Status = ReceiptStatus.FAILED;
                     receipt.ProcessedAt = DateTime.UtcNow;
-                    receipt.RejectReason = msg.Error ?? "OCR FAILED";
+
+                    var reason = msg.Error;
+                    if (rejectReasons.Count > 0)
+                    {
+                        var validationReason = string.Join(" | ", rejectReasons);
+                        reason = string.IsNullOrWhiteSpace(reason)
+                            ? validationReason
+                            : $"{reason} | {validationReason}";
+                    }
+
+                    receipt.RejectReason = reason ?? "OCR / VALIDATION FAILED";
                 }
 
-                // ReceiptOcrResult kaydı
+                // -----------------------------------------------------------------
+                // 5) ReceiptOcrResult kaydı
+                // -----------------------------------------------------------------
                 var ocrResult = await db.ReceiptOcrResults
                     .FirstOrDefaultAsync(x => x.ReceiptId == receipt.Id, cancellationToken: stoppingToken);
+
+                var payloadJson = msg.Payload?.GetRawText();
 
                 if (ocrResult == null)
                 {
@@ -239,18 +367,18 @@ public sealed class ResultsConsumer : BackgroundService
                         ReceiptId = receipt.Id,
                         JobId = msg.JobId ?? receipt.OcrJobId ?? string.Empty,
                         Status = msg.Status ?? "UNKNOWN",
-                        RawText = msg.RawText,
-                        PayloadJson = msg.Payload?.GetRawText(),
-                        Error = msg.Error
+                        RawText = receipt.RawText,
+                        PayloadJson = payloadJson,
+                        Error = receipt.RejectReason
                     };
                     await db.ReceiptOcrResults.AddAsync(ocrResult, stoppingToken);
                 }
                 else
                 {
                     ocrResult.Status = msg.Status ?? ocrResult.Status;
-                    ocrResult.RawText = msg.RawText ?? ocrResult.RawText;
-                    ocrResult.PayloadJson = msg.Payload?.GetRawText() ?? ocrResult.PayloadJson;
-                    ocrResult.Error = msg.Error ?? ocrResult.Error;
+                    ocrResult.RawText = receipt.RawText ?? ocrResult.RawText;
+                    ocrResult.PayloadJson = payloadJson ?? ocrResult.PayloadJson;
+                    ocrResult.Error = receipt.RejectReason ?? ocrResult.Error;
                 }
 
                 await db.SaveChangesAsync(stoppingToken);
@@ -262,7 +390,7 @@ public sealed class ResultsConsumer : BackgroundService
 
                 _logger.LogInformation("Receipt {Id} updated. Status={Status}", receipt.Id, receipt.Status);
 
-                // 🔴 Cafe aktifliği ver (business-critical)
+                // 🔴 Cafe aktifliği ver (sadece DONE ise ve CafeId varsa)
                 if (receipt.Status == ReceiptStatus.DONE && receipt.CafeId.HasValue)
                 {
                     try
@@ -276,7 +404,7 @@ public sealed class ResultsConsumer : BackgroundService
                             receipt.Id);
                     }
                 }
-                
+
                 // 🔴 Realtime'a haber ver (SignalR)
                 try
                 {
@@ -317,6 +445,20 @@ public sealed class ResultsConsumer : BackgroundService
         await Task.Delay(Timeout.Infinite, stoppingToken);
     }
 
+    // Address normalize (basit)
+    private static string NormalizeAddress(string? address)
+    {
+        if (string.IsNullOrWhiteSpace(address))
+            return string.Empty;
+
+        return address
+            .Trim()
+            .ToLowerInvariant()
+            .Replace("\r", " ")
+            .Replace("\n", " ");
+    }
+
+    // Cafe aktiflik verme – senin eski kodun (hiç değiştirmedim)
     private async Task GrantCafeActiveAsync(Receipt receipt, CancellationToken ct)
     {
         if (!receipt.CafeId.HasValue)
@@ -353,6 +495,7 @@ public sealed class ResultsConsumer : BackgroundService
             receipt.Id, receipt.CafeId.Value, receipt.UserId);
     }
 
+    // Realtime notify – senin eski kodun (ufak oynamadan kopyaladım)
     private async Task NotifyRealtimeAsync(OcrResultMessage msg, Receipt receipt, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(_rtOpt.BaseUrl))
@@ -402,7 +545,6 @@ public sealed class ResultsConsumer : BackgroundService
 
         if (!response.IsSuccessStatusCode)
         {
-            // burada patlat ki stacktrace kalsın ama body de logda olsun
             throw new HttpRequestException(
                 $"Realtime notify failed. Status={(int)response.StatusCode}. Body={body}");
         }
