@@ -5797,24 +5797,23 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\incia\\.nuget\\packages\\": {},
+    "C:\\Users\\ozcan\\.nuget\\packages\\": {},
     "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\incia\\OneDrive\\Masaüstü\\yeniproje\\KahveDostum_Service\\KahveDostum_Service.csproj",
+      "projectUniqueName": "C:\\Users\\ozcan\\RiderProjects\\kahvedostum-service\\KahveDostum_Service\\KahveDostum_Service.csproj",
       "projectName": "KahveDostum_Service",
-      "projectPath": "C:\\Users\\incia\\OneDrive\\Masaüstü\\yeniproje\\KahveDostum_Service\\KahveDostum_Service.csproj",
-      "packagesPath": "C:\\Users\\incia\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\incia\\OneDrive\\Masaüstü\\yeniproje\\KahveDostum_Service\\obj\\",
+      "projectPath": "C:\\Users\\ozcan\\RiderProjects\\kahvedostum-service\\KahveDostum_Service\\KahveDostum_Service.csproj",
+      "packagesPath": "C:\\Users\\ozcan\\.nuget\\packages\\",
+      "outputPath": "C:\\Users\\ozcan\\RiderProjects\\kahvedostum-service\\KahveDostum_Service\\obj\\",
       "projectStyle": "PackageReference",
-      "UsingMicrosoftNETSdk": false,
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
       ],
       "configFilePaths": [
-        "C:\\Users\\incia\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Users\\ozcan\\AppData\\Roaming\\NuGet\\NuGet.Config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
       ],
@@ -5823,18 +5822,17 @@
       ],
       "sources": {
         "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
-        "C:\\Program Files\\dotnet\\library-packs": {},
         "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {
         "net9.0": {
           "targetAlias": "net9.0",
           "projectReferences": {
-            "C:\\Users\\incia\\OneDrive\\Masaüstü\\yeniproje\\KahveDostum_Service.Application\\KahveDostum_Service.Application.csproj": {
-              "projectPath": "C:\\Users\\incia\\OneDrive\\Masaüstü\\yeniproje\\KahveDostum_Service.Application\\KahveDostum_Service.Application.csproj"
+            "C:\\Users\\ozcan\\RiderProjects\\kahvedostum-service\\KahveDostum_Service.Application\\KahveDostum_Service.Application.csproj": {
+              "projectPath": "C:\\Users\\ozcan\\RiderProjects\\kahvedostum-service\\KahveDostum_Service.Application\\KahveDostum_Service.Application.csproj"
             },
-            "C:\\Users\\incia\\OneDrive\\Masaüstü\\yeniproje\\KahveDostum_Service.Infrastructure\\KahveDostum_Service.Infrastructure.csproj": {
-              "projectPath": "C:\\Users\\incia\\OneDrive\\Masaüstü\\yeniproje\\KahveDostum_Service.Infrastructure\\KahveDostum_Service.Infrastructure.csproj"
+            "C:\\Users\\ozcan\\RiderProjects\\kahvedostum-service\\KahveDostum_Service.Infrastructure\\KahveDostum_Service.Infrastructure.csproj": {
+              "projectPath": "C:\\Users\\ozcan\\RiderProjects\\kahvedostum-service\\KahveDostum_Service.Infrastructure\\KahveDostum_Service.Infrastructure.csproj"
             }
           }
         }
@@ -5847,8 +5845,9 @@
       "restoreAuditProperties": {
         "enableAudit": "true",
         "auditLevel": "low",
-        "auditMode": "all"
-      }
+        "auditMode": "direct"
+      },
+      "SdkAnalysisLevel": "9.0.100"
     },
     "frameworks": {
       "net9.0": {
@@ -5892,7 +5891,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.100/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.102/PortableRuntimeIdentifierGraph.json"
       }
     }
   }

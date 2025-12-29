@@ -40,6 +40,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.Configure<MinioOptions>(builder.Configuration.GetSection("Minio"));
 builder.Services.Configure<RabbitOptions>(builder.Configuration.GetSection("Rabbit"));
 builder.Services.Configure<RealtimeOptions>(builder.Configuration.GetSection("Realtime"));
+builder.Services.Configure<VeryfiOptions>(
+    builder.Configuration.GetSection("Veryfi"));
 
 // ---------------------------
 // JWT
@@ -119,6 +121,9 @@ builder.Services.AddScoped<IReceiptService, ReceiptService>();
 // ---------------------------
 // Controllers + Swagger
 // ---------------------------
+builder.Services.AddHttpClient();
+builder.Services.AddHttpClient("veryfi");
+builder.Services.AddHostedService<VerifyReceiptWorker>();
 builder.Services.AddHttpClient("realtime"); 
 builder.Services.AddControllers();
 builder.Services.AddSwaggerDocumentation();
