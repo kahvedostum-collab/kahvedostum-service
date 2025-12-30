@@ -113,8 +113,8 @@ public sealed class ResultsConsumer : BackgroundService
             try
             {
                 var json = Encoding.UTF8.GetString(ea.Body.ToArray());
-                _logger.LogInformation("ResultsConsumer message: {Json}", json);
-                _logger.LogCritical("📦 RAW JSON = {Json}", json);
+                //_logger.LogInformation("ResultsConsumer message: {Json}", json);
+                //_logger.LogCritical(" RAW JSON = {Json}", json);
 
                 var msg = JsonSerializer.Deserialize<OcrResultMessage>(
                     json,
@@ -274,6 +274,7 @@ public sealed class ResultsConsumer : BackgroundService
                 // -----------------------------------------------------------------
                 // 2.5) DUPLICATE CHECK (aynı fiş daha önce kullanılmış mı?)
                 // -----------------------------------------------------------------
+                // 2.5) DUPLICATE CHECK
                 string? receiptHash = null;
 
                 if (!string.IsNullOrWhiteSpace(taxNumber) &&
@@ -288,21 +289,26 @@ public sealed class ResultsConsumer : BackgroundService
                         receipt.RawText
                     );
 
-                    // Bu fişin hash'ini de kaydet
-                    receipt.ReceiptHash = receiptHash;
-
                     var duplicateExists = await db.Receipts
                         .AnyAsync(r =>
-                            r.ReceiptHash == receiptHash &&
-                            r.Id != receipt.Id, // kendisini hariç tut
+                                r.ReceiptHash == receiptHash &&
+                                r.Id != receipt.Id,
                             stoppingToken);
 
                     if (duplicateExists)
                     {
                         isValid = false;
                         rejectReasons.Add("Bu fiş daha önce kullanılmış.");
+
+                        // receipt.ReceiptHash = null; 
+                    }
+                    else
+                    {
+                        // Sadece duplicate DEĞİLSE hash yaz
+                        receipt.ReceiptHash = receiptHash;
                     }
                 }
+
 
                 // -----------------------------------------------------------------
                 // 3) Cafe bul / yoksa oluştur
