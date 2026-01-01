@@ -27,9 +27,20 @@ public class MessagesController(IMessageService messageService) : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Send([FromBody] SendMessageRequestDto request)
     {
-        var userId = GetCurrentUserId();
-        var msg = await _messageService.SendMessageAsync(userId, request);
-        return Ok(msg);
+        try
+        {
+            var userId = GetCurrentUserId();
+            var msg = await _messageService.SendMessageAsync(userId, request);
+            return Ok(msg);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // ❗ iş kuralı hataları
+            return BadRequest(new
+            {
+                error = ex.Message
+            });
+        }
     }
 
     /// <summary>

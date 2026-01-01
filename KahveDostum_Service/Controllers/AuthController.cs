@@ -8,13 +8,14 @@ namespace KahveDostum_Service.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 public class AuthController(
-    IAuthService authService,
-    IUserService userService
+    IAuthService authService
 ) : ControllerBase
 {
     private readonly IAuthService _authService = authService;
-    private readonly IUserService _userService = userService;
 
+    // =========================================================
+    // REGISTER
+    // =========================================================
     [HttpPost("Register")]
     [AllowAnonymous]
     public async Task<IActionResult> Register([FromBody] RegisterRequestDto request)
@@ -23,42 +24,6 @@ public class AuthController(
         {
             var result = await _authService.RegisterAsync(request);
             return Ok(ApiResponse<RegisterResultDto>.SuccessResponse(result, "Kayıt başarılı."));
-
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ApiResponse<object>.FailResponse(ex.Message, 400));
-        }
-    }
-    [Authorize]
-    [HttpPost("Avatar/Complete")]
-    public async Task<IActionResult> CompleteAvatarUpload()
-    {
-        var userIdClaim =
-            User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)
-            ?? User.FindFirst("sub");
-
-        if (userIdClaim == null)
-            return Unauthorized();
-
-        var userId = int.Parse(userIdClaim.Value);
-
-        var bucket = "avatars";
-        var objectKey = $"users/{userId}/avatar.jpg";
-        var url = $"https://minio.kahvedostum.com/{bucket}/{objectKey}";
-
-        await _userService.UpdateAvatarUrlAsync(userId, url);
-
-        return Ok(new { avatarUrl = url });
-    }
-    
-    [HttpPost("Logout")]
-    public async Task<IActionResult> Logout([FromBody] LogoutRequestDto request)
-    {
-        try
-        {
-            await _authService.LogoutAsync(request);
-            return Ok(ApiResponse<string>.SuccessResponse("Çıkış yapıldı."));
         }
         catch (InvalidOperationException ex)
         {
@@ -66,7 +31,9 @@ public class AuthController(
         }
     }
 
-
+    // =========================================================
+    // LOGIN
+    // =========================================================
     [HttpPost("Login")]
     [AllowAnonymous]
     public async Task<IActionResult> Login([FromBody] LoginRequestDto request)
@@ -82,6 +49,9 @@ public class AuthController(
         }
     }
 
+    // =========================================================
+    // REFRESH
+    // =========================================================
     [Authorize]
     [HttpPost("Refresh")]
     public async Task<IActionResult> Refresh([FromBody] RefreshRequestDto request)
@@ -90,6 +60,23 @@ public class AuthController(
         {
             var result = await _authService.RefreshAsync(request);
             return Ok(ApiResponse<LoginResultDto>.SuccessResponse(result, "Token yenilendi."));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse<object>.FailResponse(ex.Message, 400));
+        }
+    }
+
+    // =========================================================
+    // LOGOUT
+    // =========================================================
+    [HttpPost("Logout")]
+    public async Task<IActionResult> Logout([FromBody] LogoutRequestDto request)
+    {
+        try
+        {
+            await _authService.LogoutAsync(request);
+            return Ok(ApiResponse<string>.SuccessResponse("Çıkış yapıldı."));
         }
         catch (InvalidOperationException ex)
         {

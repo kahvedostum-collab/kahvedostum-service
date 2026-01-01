@@ -11,6 +11,8 @@ using KahveDostum_Service.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Minio;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -42,6 +44,23 @@ builder.Services.Configure<RabbitOptions>(builder.Configuration.GetSection("Rabb
 builder.Services.Configure<RealtimeOptions>(builder.Configuration.GetSection("Realtime"));
 
 // ---------------------------
+// 🔥 MinIO Client (EKLENEN TEK KISIM)
+// ---------------------------
+builder.Services.AddSingleton<IMinioClient>(sp =>
+{
+    var opt = sp.GetRequiredService<IOptions<MinioOptions>>().Value;
+
+    var client = new MinioClient()
+        .WithEndpoint(opt.Endpoint)
+        .WithCredentials(opt.AccessKey, opt.SecretKey);
+
+    if (opt.Secure)
+        client = client.WithSSL();
+
+    return client.Build();
+});
+
+// ---------------------------
 // JWT
 // ---------------------------
 var jwtSection = builder.Configuration.GetSection("Jwt");
@@ -69,17 +88,16 @@ builder.Services
     });
 
 builder.Services.AddAuthorization();
+
 // ---------------------------
 // Infrastructure Services (MinIO + Rabbit)
 // ---------------------------
 builder.Services.AddSingleton<IObjectStorage, MinioStorage>();
 builder.Services.AddSingleton<IOcrJobPublisher, RabbitOcrJobPublisher>();
 
-
 // ---------------------------
 // Repositories + UoW
 // ---------------------------
-
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<ICompanyRepository, CompanyRepository>();
@@ -98,7 +116,7 @@ builder.Services.AddScoped<IMessageReceiptRepository, MessageReceiptRepository>(
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IReceiptOcrResultRepository, ReceiptOcrResultRepository>();
 
-//  🔥 EKSİK OLAN 2 REPOSITORY — ZORUNLU 🔥
+// 🔥 ZORUNLU
 builder.Services.AddScoped<ICafeRepository, CafeRepository>();
 builder.Services.AddScoped<IUserSessionRepository, UserSessionRepository>();
 
@@ -122,7 +140,7 @@ builder.Services.AddScoped<IReceiptService, ReceiptService>();
 builder.Services.AddHttpClient();
 builder.Services.AddHttpClient("veryfi");
 builder.Services.AddHostedService<VerifyReceiptWorker>();
-builder.Services.AddHttpClient("realtime"); 
+builder.Services.AddHttpClient("realtime");
 builder.Services.AddControllers();
 builder.Services.AddSwaggerDocumentation();
 builder.Services.AddHostedService<ResultsConsumer>();
